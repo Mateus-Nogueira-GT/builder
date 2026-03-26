@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Check, AlertCircle } from "lucide-react";
+import { Check, AlertCircle, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface FieldDef {
@@ -17,9 +17,18 @@ interface ContentBlockProps {
   isComplete: boolean;
   fields: FieldDef[];
   onFieldChange: (key: string, value: string) => void;
+  onRegenerate?: () => void;
+  isRegenerating?: boolean;
 }
 
-export function ContentBlock({ title, isComplete, fields, onFieldChange }: ContentBlockProps) {
+export function ContentBlock({
+  title,
+  isComplete,
+  fields,
+  onFieldChange,
+  onRegenerate,
+  isRegenerating,
+}: ContentBlockProps) {
   return (
     <Card className="border-zinc-800 bg-zinc-900">
       <CardHeader className="pb-3">
@@ -36,7 +45,23 @@ export function ContentBlock({ title, isComplete, fields, onFieldChange }: Conte
               <AlertCircle className="h-3 w-3 text-zinc-400" />
             )}
           </div>
-          {title}
+          <span className="flex-1">{title}</span>
+          {onRegenerate && (
+            <button
+              type="button"
+              onClick={onRegenerate}
+              disabled={isRegenerating}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-emerald-400 transition-colors disabled:opacity-50"
+              title="Regenerar este bloco"
+            >
+              <RotateCcw
+                className={cn(
+                  "h-3.5 w-3.5",
+                  isRegenerating && "animate-spin"
+                )}
+              />
+            </button>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
