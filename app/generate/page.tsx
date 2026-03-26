@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { StepIndicator } from '@/components/StepIndicator';
 import { ContentBlock } from '@/components/ContentBlock';
+import { VersionHistory } from '@/components/VersionHistory';
 import { Button } from '@/components/ui/button';
 import { getSession, setSession } from '@/lib/session';
-import type { StoreContent } from '@/lib/schemas';
+import { generateVariation, type BlockName } from '@/lib/contentVariations';
+import type { StoreContent, OnboardingData } from '@/lib/schemas';
 import { Loader2, ArrowRight, RotateCcw, Sparkles, Shirt } from 'lucide-react';
 
 const FLOW_STEPS = [
@@ -22,17 +24,31 @@ const FLOW_STEPS = [
 export default function GeneratePage() {
     const router = useRouter();
     const [content, setContent] = useState<StoreContent | null>(null);
+    const [onboarding, setOnboarding] = useState<OnboardingData | null>(null);
+    const [storeId, setStoreId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [regeneratingBlock, setRegeneratingBlock] = useState<string | null>(null);
 
-    const generateContent = useCallback(async () => {
+    useEffect(() => {
         const session = getSession();
-        if (!session.onboarding) {
+        if (session.content) {
+            setContent(session.content);
+            setOnboarding(session.onboarding ?? null);
+            setStoreId(session.storeId ?? null);
+            setLoading(false);
+        } else if (session.onboarding) {
+            setOnboarding(session.onboarding);
+            setStoreId(session.storeId ?? null);
+            generateFullContent(session.onboarding);
+        } else {
             toast.error('Complete o onboarding primeiro');
             router.push('/onboarding');
-            return;
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
+    const generateFullContent = async (onb: OnboardingData) => {
         setLoading(true);
         setError(null);
 
@@ -40,7 +56,7 @@ export default function GeneratePage() {
             const res = await fetch('/api/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...session.onboarding, onboarding: session.onboarding }),
+                body: JSON.stringify({ ...onb, onboarding: onb }),
             });
 
             if (!res.ok) {
@@ -59,17 +75,58 @@ export default function GeneratePage() {
         } finally {
             setLoading(false);
         }
-    }, [router]);
+    };
 
-    useEffect(() => {
-        const session = getSession();
-        if (session.content) {
-            setContent(session.content);
-            setLoading(false);
-        } else {
-            generateContent();
+    const saveVersion = async (trigger: string, blockName?: string) => {
+        if (!storeId || !content) return;
+        try {
+            await fetch('/api/content-versions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    storeId,
+                    content,
+                    trigger,
+                    blockName,
+                }),
+            });
+        } catch {
+            console.warn('Failed to save content version');
         }
-    }, [generateContent]);
+    };
+
+    const handleRegenerateBlock = useCallback(
+        async (blockName: BlockName) => {
+            if (!content || !onboarding || regeneratingBlock) return;
+
+            setRegeneratingBlock(blockName);
+
+            await saveVersion('block_regeneration', blockName);
+
+            const variation = generateVariation(blockName, content, onboarding);
+            const updated = { ...content, ...variation };
+
+            setContent(updated);
+            setSession({ content: updated });
+            toast.success('Bloco regenerado!');
+
+            setTimeout(() => setRegeneratingBlock(null), 300);
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [content, onboarding, regeneratingBlock, storeId]
+    );
+
+    const handleRegenerateAll = async () => {
+        if (!onboarding) return;
+        await saveVersion('full_regeneration');
+        generateFullContent(onboarding);
+    };
+
+    const handleRestore = (restored: StoreContent) => {
+        setContent(restored);
+        setSession({ content: restored });
+        toast.success('Versão restaurada!');
+    };
 
     const updateField = (section: string, key: string, value: string) => {
         if (!content) return;
@@ -120,7 +177,8 @@ export default function GeneratePage() {
         router.push('/hero-image');
     };
 
-    // Skeleton loader
+    const isAnyRegenerating = regeneratingBlock !== null;
+
     if (loading) {
         return (
             <div className="min-h-screen bg-zinc-950 px-4 py-8">
@@ -132,7 +190,6 @@ export default function GeneratePage() {
                         <h1 className="text-3xl font-bold">Kit Store Builder</h1>
                     </div>
                     <StepIndicator steps={FLOW_STEPS} currentStep={1} />
-
                     <div className="space-y-4">
                         <div className="flex items-center justify-center gap-3 py-12">
                             <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
@@ -145,7 +202,6 @@ export default function GeneratePage() {
                                 </p>
                             </div>
                         </div>
-
                         {[1, 2, 3, 4, 5].map((i) => (
                             <div
                                 key={i}
@@ -163,7 +219,10 @@ export default function GeneratePage() {
             <div className="min-h-screen bg-zinc-950 flex items-center justify-center px-4">
                 <div className="text-center space-y-4">
                     <p className="text-red-400 text-lg">{error}</p>
-                    <Button onClick={generateContent} className="bg-emerald-500 text-black font-bold">
+                    <Button
+                        onClick={() => onboarding && generateFullContent(onboarding)}
+                        className="bg-emerald-500 text-black font-bold"
+                    >
                         <RotateCcw className="mr-2 h-4 w-4" /> Tentar novamente
                     </Button>
                 </div>
@@ -190,13 +249,17 @@ export default function GeneratePage() {
                         <Sparkles className="h-5 w-5 text-emerald-500" />
                         Conteúdo Gerado
                     </h2>
-                    <Button
-                        variant="outline"
-                        onClick={generateContent}
-                        className="border-zinc-700 text-zinc-300 hover:border-emerald-500"
-                    >
-                        <RotateCcw className="mr-2 h-4 w-4" /> Regenerar tudo
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <VersionHistory storeId={storeId} onRestore={handleRestore} />
+                        <Button
+                            variant="outline"
+                            onClick={handleRegenerateAll}
+                            disabled={isAnyRegenerating}
+                            className="border-zinc-700 text-zinc-300 hover:border-emerald-500"
+                        >
+                            <RotateCcw className="mr-2 h-4 w-4" /> Regenerar tudo
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="space-y-4">
@@ -212,6 +275,8 @@ export default function GeneratePage() {
                             if (key === 'topbar') updateField('topbar', key, value);
                             else updateField('whatsapp', key, value);
                         }}
+                        onRegenerate={() => handleRegenerateBlock('topbar')}
+                        isRegenerating={regeneratingBlock === 'topbar'}
                     />
 
                     {/* Trust Bar */}
@@ -227,6 +292,8 @@ export default function GeneratePage() {
                             const idx = parseInt(idxStr);
                             updateField(`trust-${idx}`, field, value);
                         }}
+                        onRegenerate={() => handleRegenerateBlock('trustBar')}
+                        isRegenerating={regeneratingBlock === 'trustBar'}
                     />
 
                     {/* Promo Banner */}
@@ -240,6 +307,8 @@ export default function GeneratePage() {
                             { key: 'ctaLink', label: 'Link do Botão', value: content.promoBanner.ctaLink },
                         ]}
                         onFieldChange={(key, value) => updateField('promo', key, value)}
+                        onRegenerate={() => handleRegenerateBlock('promoBanner')}
+                        isRegenerating={regeneratingBlock === 'promoBanner'}
                     />
 
                     {/* Testimonials */}
@@ -255,12 +324,10 @@ export default function GeneratePage() {
                                 { key: 'text', label: 'Depoimento', value: test.text, type: 'textarea' as const },
                             ]}
                             onFieldChange={(key, value) => {
-                                if (key === 'rating') {
-                                    updateField(`testimonial-${i}`, key, value);
-                                } else {
-                                    updateField(`testimonial-${i}`, key, value);
-                                }
+                                updateField(`testimonial-${i}`, key, value);
                             }}
+                            onRegenerate={i === 0 ? () => handleRegenerateBlock('testimonials') : undefined}
+                            isRegenerating={i === 0 ? regeneratingBlock === 'testimonials' : false}
                         />
                     ))}
 
@@ -277,6 +344,8 @@ export default function GeneratePage() {
                             const idx = parseInt(idxStr);
                             updateField(`category-${idx}`, field === 'name' ? 'name' : 'image', value);
                         }}
+                        onRegenerate={() => handleRegenerateBlock('categories')}
+                        isRegenerating={regeneratingBlock === 'categories'}
                     />
 
                     {/* Footer */}
@@ -288,6 +357,8 @@ export default function GeneratePage() {
                             { key: 'aboutText', label: 'Sobre Nós', value: content.footer.aboutText, type: 'textarea' as const },
                         ]}
                         onFieldChange={(key, value) => updateField('footer', key, value)}
+                        onRegenerate={() => handleRegenerateBlock('footer')}
+                        isRegenerating={regeneratingBlock === 'footer'}
                     />
                 </div>
 
