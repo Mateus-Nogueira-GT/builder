@@ -20,9 +20,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { storeName, email, whatsapp, instagram, city, state, focus,
-      activePromotion, primaryColor, secondaryColor,
-      accentColor, layoutType, bannerBgColor, bannerTextColor, bannerCtaColor,
-      logoVariant, logoSvg } = body;
+      activePromotion, primaryColor, secondaryColor } = body;
 
     if (!storeName) {
       return NextResponse.json(
