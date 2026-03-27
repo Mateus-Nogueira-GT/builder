@@ -19,7 +19,9 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { storeName, email, whatsapp, instagram, city, state, focus,
-      activePromotion, primaryColor, secondaryColor } = body;
+      activePromotion, primaryColor, secondaryColor,
+      accentColor, layoutType, bannerBgColor, bannerTextColor, bannerCtaColor,
+      logoVariant, logoSvg } = body;
 
     if (!storeName) {
       return NextResponse.json(
@@ -138,6 +140,13 @@ export async function POST(request: Request) {
         active_promotion: activePromotion || null,
         primary_color: primaryColor || "#10b981",
         secondary_color: secondaryColor || "#18181b",
+        accent_color: accentColor || null,
+        layout_type: layoutType || "classic",
+        banner_bg_color: bannerBgColor || null,
+        banner_text_color: bannerTextColor || null,
+        banner_cta_color: bannerCtaColor || null,
+        logo_variant: logoVariant || null,
+        logo_svg: logoSvg || null,
         connection_method: "auto",
       })
       .select("*")
