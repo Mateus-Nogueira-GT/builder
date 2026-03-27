@@ -8,7 +8,6 @@ const REQUIRED_COLLECTIONS = [
     { id: COLLECTIONS.storeConfig, label: 'Configuracoes da loja' },
     { id: COLLECTIONS.banners, label: 'Banners e hero' },
     { id: COLLECTIONS.trustBar, label: 'Trust bar' },
-    { id: COLLECTIONS.testimonials, label: 'Depoimentos' },
     { id: COLLECTIONS.promoBanner, label: 'Banner promocional' },
     { id: COLLECTIONS.categories, label: 'Categorias' },
 ];
@@ -147,6 +146,13 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         { key: 'logo', type: 'URL' },
         { key: 'primaryColor', type: 'TEXT' },
         { key: 'secondaryColor', type: 'TEXT' },
+        { key: 'accentColor', type: 'TEXT' },
+        { key: 'layoutType', type: 'TEXT' },
+        { key: 'bannerBgColor', type: 'TEXT' },
+        { key: 'bannerTextColor', type: 'TEXT' },
+        { key: 'bannerCtaColor', type: 'TEXT' },
+        { key: 'logoSvg', type: 'TEXT' },
+        { key: 'logoVariant', type: 'TEXT' },
     ]);
     await ensureCollection(apiKey, siteId, COLLECTIONS.banners, 'Banners e Hero', [
         { key: 'title', type: 'TEXT' },
@@ -157,18 +163,13 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         { key: 'order', type: 'NUMBER' },
         { key: 'image', type: 'URL' },
         { key: 'mobileImage', type: 'URL' },
+        { key: 'bgColor', type: 'TEXT' },
+        { key: 'textColor', type: 'TEXT' },
+        { key: 'ctaColor', type: 'TEXT' },
     ]);
     await ensureCollection(apiKey, siteId, COLLECTIONS.trustBar, 'Trust Bar', [
         { key: 'icon', type: 'TEXT' },
         { key: 'text', type: 'TEXT' },
-        { key: 'order', type: 'NUMBER' },
-    ]);
-    await ensureCollection(apiKey, siteId, COLLECTIONS.testimonials, 'Depoimentos', [
-        { key: 'name', type: 'TEXT' },
-        { key: 'city', type: 'TEXT' },
-        { key: 'rating', type: 'NUMBER' },
-        { key: 'text', type: 'RICH_TEXT' },
-        { key: 'photo', type: 'URL' },
         { key: 'order', type: 'NUMBER' },
     ]);
     await ensureCollection(apiKey, siteId, COLLECTIONS.categories, 'Categorias', [
@@ -212,18 +213,28 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         logo: images.logo || '',
         primaryColor: onboarding.primaryColor || '#10b981',
         secondaryColor: onboarding.secondaryColor || '#18181b',
+        accentColor: onboarding.accentColor || '',
+        layoutType: onboarding.layoutType || 'classic',
+        bannerBgColor: onboarding.bannerBgColor || '',
+        bannerTextColor: onboarding.bannerTextColor || '',
+        bannerCtaColor: onboarding.bannerCtaColor || '',
+        logoSvg: onboarding.logoSvg || '',
+        logoVariant: onboarding.logoVariant || '',
     });
 
     await clearCollection(apiKey, siteId, COLLECTIONS.banners);
     await upsertItem(apiKey, siteId, COLLECTIONS.banners, {
-        title: '',
-        subtext: '',
-        ctaLabel: '',
-        ctaLink: '',
+        title: (promoBanner.title as string) || '',
+        subtext: (promoBanner.subtitle as string) || '',
+        ctaLabel: (promoBanner.ctaLabel as string) || '',
+        ctaLink: (promoBanner.ctaLink as string) || '',
         theme: 'dark',
         order: 0,
         image: onboarding.heroBannerDesktopUrl || '',
         mobileImage: onboarding.heroBannerMobileUrl || '',
+        bgColor: onboarding.bannerBgColor || '',
+        textColor: onboarding.bannerTextColor || '',
+        ctaColor: onboarding.bannerCtaColor || '',
     });
 
     await clearCollection(apiKey, siteId, COLLECTIONS.trustBar);
@@ -244,18 +255,6 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         COLLECTIONS.categories,
         categories.map((item, index) => ({
             ...item,
-            order: index,
-        }))
-    );
-
-    await clearCollection(apiKey, siteId, COLLECTIONS.testimonials);
-    await bulkUpsertItems(
-        apiKey,
-        siteId,
-        COLLECTIONS.testimonials,
-        testimonials.map((item, index) => ({
-            ...item,
-            photo: images[`testimonial${index + 1}`] || item.photo || '',
             order: index,
         }))
     );
