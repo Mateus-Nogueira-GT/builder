@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { supabase } from "@/lib/supabase";
+import { getTemplateId } from "@/lib/templateMap";
 
 const WIX_API_KEY = process.env.WIX_ADMIN_API_KEY!;
 const WIX_ACCOUNT_ID = process.env.WIX_ACCOUNT_ID!;
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
         },
         body: JSON.stringify({
           type: "WIX",
-          templateId: "9b6ae83a-02a6-4c47-8816-bade636b412e",
+          templateId: getTemplateId(body.layoutType || "classic"),
         }),
       }
     );
