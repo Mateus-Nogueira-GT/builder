@@ -10,12 +10,11 @@ import { clearSession } from '@/lib/session';
 import { Shirt, LayoutDashboard } from 'lucide-react';
 
 const FLOW_STEPS = [
-    { label: 'Dados da Loja' },
-    { label: 'Conteúdo' },
-    { label: 'Imagens' },
-    { label: 'Preview' },
+    { label: 'Nome & Cores' },
+    { label: 'Layout' },
+    { label: 'Banners' },
+    { label: 'Logo' },
     { label: 'Publicar' },
-    { label: 'Dashboard' },
 ];
 
 function PublishingContent() {
