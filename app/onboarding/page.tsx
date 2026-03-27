@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSession, setSession } from "@/lib/session";
+import { generateDefaultContent } from "@/lib/defaultContent";
 import { PALETTES, type Palette } from "@/lib/palettes";
 import type { LogoVariant } from "@/lib/logoTemplates";
 import { Shirt, ArrowRight, ArrowLeft, Loader2, Store, Palette as PaletteIcon, ImageIcon, Sparkles } from "lucide-react";
@@ -93,7 +94,8 @@ export default function OnboardingPage() {
 
     setCreating(true);
     try {
-      const res = await fetch("/api/wix/create-site", {
+      // 1. Create Wix site
+      const createRes = await fetch("/api/wix/create-site", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -110,26 +112,74 @@ export default function OnboardingPage() {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || "Erro ao criar site");
+      const siteData = await createRes.json();
+      if (!createRes.ok) {
+        toast.error(siteData.error || "Erro ao criar site");
         return;
       }
 
-      setSession({
-        onboarding: {
-          ...getSession().onboarding!,
-          siteId: data.siteId,
-          siteUrl: data.siteUrl,
-          siteName: form.storeName,
-          instanceId: data.metaSiteId,
-          apiKey: "",
-        },
-        storeId: data.storeId,
+      // 2. Generate default content
+      const content = generateDefaultContent({
+        storeName: form.storeName,
+        primaryColor: form.palette.primary,
+        secondaryColor: form.palette.secondary,
+        accentColor: form.palette.accent,
+        layoutType: form.layoutType,
+        bannerBgColor: form.bannerBgColor,
+        bannerTextColor: form.bannerTextColor,
+        bannerCtaColor: form.bannerCtaColor,
+        logoSvg: form.logoSvg,
+        logoVariant: form.logoVariant,
       });
 
-      toast.success("Loja criada com sucesso!");
-      router.push("/generate");
+      // 3. Update session
+      const updatedOnboarding = {
+        ...getSession().onboarding!,
+        siteId: siteData.siteId,
+        siteUrl: siteData.siteUrl,
+        siteName: form.storeName,
+        instanceId: siteData.metaSiteId,
+        apiKey: "",
+        accentColor: form.palette.accent,
+        layoutType: form.layoutType,
+        bannerBgColor: form.bannerBgColor,
+        bannerTextColor: form.bannerTextColor,
+        bannerCtaColor: form.bannerCtaColor,
+        logoSvg: form.logoSvg,
+        logoVariant: form.logoVariant,
+      };
+
+      setSession({
+        onboarding: updatedOnboarding,
+        storeId: siteData.storeId,
+        content,
+      });
+
+      // 4. Trigger injection
+      const injectRes = await fetch("/api/inject", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payload: {
+            ...content,
+            onboarding: updatedOnboarding,
+            images: {},
+          },
+          storeId: siteData.storeId,
+          apiKey: updatedOnboarding.apiKey,
+          siteId: siteData.siteId,
+        }),
+      });
+
+      const injectData = await injectRes.json();
+      if (!injectRes.ok) {
+        toast.error(injectData.error || "Erro ao iniciar publicação");
+        return;
+      }
+
+      // 5. Redirect to publishing
+      toast.success("Loja criada! Publicando...");
+      router.push(`/publishing?jobId=${injectData.jobId}`);
     } catch {
       toast.error("Erro ao criar site");
     } finally {
@@ -279,7 +329,7 @@ export default function OnboardingPage() {
                   className="bg-emerald-500 text-black font-bold"
                 >
                   {creating ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Criando loja...</>
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Criando e publicando...</>
                   ) : (
                     <>Finalizar <ArrowRight className="ml-2 h-4 w-4" /></>
                   )}
