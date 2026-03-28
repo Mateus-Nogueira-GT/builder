@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { createLog, createProvisionRun, appendProvisionLog, getProvisionRun } from '@/lib/provisioning';
-import { publishSite, runTemplatePreflight, ensureCollection, clearCollection, upsertItem, bulkUpsertItems } from '@/lib/wix';
+import { publishSite, runTemplatePreflight, ensureCollection, clearCollection, upsertItem, bulkUpsertItems, createProducts } from '@/lib/wix';
+import { fetchTorcedorProductIds, fetchProductsByFocus } from '@/lib/externalCatalog';
+import { mapToWixProduct } from '@/lib/productMapper';
 import { COLLECTIONS } from '@/config/collections';
 
 const REQUIRED_COLLECTIONS = [
@@ -275,6 +277,38 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         currentStep: 'branding',
     });
 
+
+    // ── Product Injection ──
+    await appendProvisionLog(runId, createLog('Injetando produtos iniciais...', 'running', 'products'), {
+        status: 'running',
+        currentStep: 'products',
+    });
+
+    try {
+        const focus = (onboarding.focus as string) || 'todos';
+        const initialProducts = await fetchProductsByFocus(focus, 100);
+        if (initialProducts.length > 0) {
+            const wixProducts = initialProducts.map(mapToWixProduct);
+            const result = await createProducts(apiKey, siteId, wixProducts);
+            await appendProvisionLog(
+                runId,
+                createLog(`Produtos iniciais: ${result.created} criados, ${result.failed} falhas.`, result.failed > 0 ? 'warning' : 'success', 'products'),
+                { status: 'running', currentStep: 'branding' }
+            );
+        } else {
+            await appendProvisionLog(runId, createLog('Nenhum produto encontrado no catálogo.', 'warning', 'products'), {
+                status: 'running',
+                currentStep: 'branding',
+            });
+        }
+    } catch (err) {
+        await appendProvisionLog(
+            runId,
+            createLog(`Erro ao injetar produtos: ${err instanceof Error ? err.message : 'Erro desconhecido'}`, 'warning', 'products'),
+            { status: 'running', currentStep: 'branding' }
+        );
+    }
+
     await appendProvisionLog(runId, createLog('Aplicando branding final do template.', 'success', 'branding'), {
         status: 'running',
         currentStep: 'publish',
@@ -299,6 +333,28 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
             .from('stores')
             .update({ template_ready: true, wix_site_url: siteUrl || null })
             .eq('id', storeId);
+    }
+
+    // Trigger background product sync
+    try {
+        const allProductIds = await fetchTorcedorProductIds();
+        if (allProductIds.length > 100) {
+            fetch(`${process.env.NEXTAUTH_URL}/api/products/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    storeId: storeId || '',
+                    siteId,
+                    apiKey,
+                    totalProductIds: allProductIds,
+                    initialOffset: 100,
+                }),
+            }).catch((err) => {
+                console.warn('Failed to trigger background sync:', err);
+            });
+        }
+    } catch (err) {
+        console.warn('Failed to fetch product IDs for background sync:', err);
     }
 
     await appendProvisionLog(runId, createLog('Provisionamento finalizado.', 'success', 'finalize'), {
