@@ -337,3 +337,68 @@ export async function publishSite(
     return false;
   }
 }
+
+/* ──────────────────── Product Management ─────────────── */
+
+const WIX_STORES_API = "https://www.wixapis.com/stores/v1";
+
+/**
+ * Creates a single product in the Wix store.
+ */
+export async function createProduct(
+  apiKey: string,
+  siteId: string,
+  product: {
+    name: string;
+    description: string;
+    productType: string;
+    priceData: { price: number; currency: string };
+    sku: string;
+    media: { items: Array<{ image: { url: string } }> };
+    visible: boolean;
+  }
+): Promise<void> {
+  await withRetry(async () => {
+    await wixFetch(`${WIX_STORES_API}/products`, {
+      apiKey,
+      siteId,
+      method: "POST",
+      body: { product },
+    });
+  }, 2);
+}
+
+/**
+ * Creates multiple products with rate limiting.
+ * Returns count of created and failed products.
+ */
+export async function createProducts(
+  apiKey: string,
+  siteId: string,
+  products: Array<{
+    name: string;
+    description: string;
+    productType: string;
+    priceData: { price: number; currency: string };
+    sku: string;
+    media: { items: Array<{ image: { url: string } }> };
+    visible: boolean;
+  }>
+): Promise<{ created: number; failed: number }> {
+  let created = 0;
+  let failed = 0;
+
+  for (const product of products) {
+    try {
+      await createProduct(apiKey, siteId, product);
+      created++;
+    } catch (err) {
+      console.error(`Failed to create product "${product.name}":`, err instanceof Error ? err.message : err);
+      failed++;
+    }
+    // 200ms delay between products to respect rate limits
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  return { created, failed };
+}
