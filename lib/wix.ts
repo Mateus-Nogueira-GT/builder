@@ -313,6 +313,107 @@ export async function runTemplatePreflight(
   return { ok, checks, siteUrl };
 }
 
+/* ──────────────────── CMS Activation ──────────────────── */
+
+/**
+ * Attempts to enable CMS on a Wix site by installing the Wix Data app.
+ * Tries multiple approaches: install app, then verify CMS is active.
+ * Returns true if CMS is active after attempts.
+ */
+export async function enableCms(
+  apiKey: string,
+  siteId: string,
+  accountId: string
+): Promise<boolean> {
+  // First check if CMS is already active
+  if (await isCmsActive(apiKey, siteId)) {
+    return true;
+  }
+
+  // Try to install the Wix Data / CMS app to enable it
+  const cmsAppIds = [
+    "cloudsite-data", // Wix Data internal app ID
+    "1380b703-ce81-ff05-f115-39571d94dfcd", // Wix Code (Velo)
+  ];
+
+  for (const appId of cmsAppIds) {
+    try {
+      await fetch(
+        "https://www.wixapis.com/apps/v1/bulk-install",
+        {
+          method: "POST",
+          headers: {
+            Authorization: apiKey,
+            "wix-account-id": accountId,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            metaSiteIds: [siteId],
+            appId,
+          }),
+        }
+      );
+    } catch {
+      // Silently continue — some app IDs may not work
+    }
+  }
+
+  // Also try enabling via the site-level endpoint
+  try {
+    await fetch(
+      `https://www.wixapis.com/apps-installer-service/v1/app-instance/install`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: apiKey,
+          "wix-site-id": siteId,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          appId: "1380b703-ce81-ff05-f115-39571d94dfcd",
+        }),
+      }
+    );
+  } catch {
+    // Continue
+  }
+
+  // Wait and check with retries
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await new Promise((r) => setTimeout(r, 5000)); // wait 5s between checks
+    if (await isCmsActive(apiKey, siteId)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Checks if the CMS/Data API is active on a site.
+ */
+export async function isCmsActive(
+  apiKey: string,
+  siteId: string
+): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `${WIX_API_BASE}/collections`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: apiKey,
+          "wix-site-id": siteId,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /* ──────────────────── Site Publishing ─────────────────── */
 
 /**

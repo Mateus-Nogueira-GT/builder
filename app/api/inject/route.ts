@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { createLog, createProvisionRun, appendProvisionLog, getProvisionRun } from '@/lib/provisioning';
-import { publishSite, runTemplatePreflight, ensureCollection, clearCollection, upsertItem, bulkUpsertItems, createProducts } from '@/lib/wix';
+import { publishSite, runTemplatePreflight, ensureCollection, clearCollection, upsertItem, bulkUpsertItems, createProducts, enableCms } from '@/lib/wix';
 import { fetchTorcedorProductIds, fetchProductsByFocus } from '@/lib/externalCatalog';
 import { mapToWixProduct } from '@/lib/productMapper';
 import { COLLECTIONS } from '@/config/collections';
@@ -118,8 +118,29 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
 
     await appendProvisionLog(runId, createLog('Provisionamento iniciado.', 'running'), {
         status: 'running',
-        currentStep: 'preflight',
+        currentStep: 'cms-activation',
     });
+
+    // ── CMS Activation ──
+    await appendProvisionLog(runId, createLog('Ativando CMS no site Wix...', 'running', 'cms-activation'), {
+        status: 'running',
+        currentStep: 'cms-activation',
+    });
+
+    const accountId = process.env.WIX_ACCOUNT_ID || '';
+    const cmsActive = await enableCms(apiKey, siteId, accountId);
+
+    if (cmsActive) {
+        await appendProvisionLog(runId, createLog('CMS ativado com sucesso.', 'success', 'cms-activation'), {
+            status: 'running',
+            currentStep: 'preflight',
+        });
+    } else {
+        await appendProvisionLog(runId, createLog('Não foi possível ativar o CMS automaticamente. Tentando prosseguir...', 'warning', 'cms-activation'), {
+            status: 'running',
+            currentStep: 'preflight',
+        });
+    }
 
     const preflight = await runTemplatePreflight(apiKey, siteId, REQUIRED_COLLECTIONS);
     for (const check of preflight.checks) {
