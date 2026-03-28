@@ -1,9 +1,18 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const externalSupabase = createClient(
-  process.env.EXTERNAL_SUPABASE_URL!,
-  process.env.EXTERNAL_SUPABASE_KEY!
-);
+let _client: SupabaseClient | null = null;
+
+function getExternalSupabase(): SupabaseClient {
+  if (!_client) {
+    const url = process.env.EXTERNAL_SUPABASE_URL;
+    const key = process.env.EXTERNAL_SUPABASE_KEY;
+    if (!url || !key) {
+      throw new Error("EXTERNAL_SUPABASE_URL and EXTERNAL_SUPABASE_KEY must be set");
+    }
+    _client = createClient(url, key);
+  }
+  return _client;
+}
 
 export interface CatalogProduct {
   id: string;
@@ -29,7 +38,7 @@ export async function fetchTorcedorProductIds(): Promise<string[]> {
   const pageSize = 1000;
 
   while (true) {
-    const { data, error } = await externalSupabase
+    const { data, error } = await getExternalSupabase()
       .from("products_group")
       .select("catalog_product_id")
       .eq("group_name", "TORCEDOR")
@@ -59,7 +68,7 @@ export async function fetchProducts(
   const slicedIds = ids.slice(offset, offset + limit);
   if (slicedIds.length === 0) return [];
 
-  const { data, error } = await externalSupabase
+  const { data, error } = await getExternalSupabase()
     .from("catalog_products")
     .select("id, sku, name, description, images, variants, category_cache, is_published")
     .in("id", slicedIds)
