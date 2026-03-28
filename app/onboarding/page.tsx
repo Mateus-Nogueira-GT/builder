@@ -16,13 +16,18 @@ import { getSession, setSession } from "@/lib/session";
 import { generateDefaultContent } from "@/lib/defaultContent";
 import { PALETTES, type Palette } from "@/lib/palettes";
 import type { LogoVariant } from "@/lib/logoTemplates";
-import { Shirt, ArrowRight, ArrowLeft, Loader2, Store, Palette as PaletteIcon, ImageIcon, Sparkles } from "lucide-react";
+import {
+  Shirt, ArrowRight, ArrowLeft, Loader2, Store,
+  Palette as PaletteIcon, ImageIcon, Sparkles,
+  Database, ExternalLink, CheckCircle2, RefreshCw,
+} from "lucide-react";
 
 const FLOW_STEPS = [
   { label: "Nome & Cores" },
   { label: "Layout" },
   { label: "Banners" },
   { label: "Logo" },
+  { label: "Ativar CMS" },
 ];
 
 interface OnboardingState {
@@ -41,6 +46,10 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [cmsActive, setCmsActive] = useState(false);
+  const [siteData, setSiteData] = useState<{ storeId: string; siteId: string; metaSiteId: string; siteUrl: string } | null>(null);
 
   const [form, setForm] = useState<OnboardingState>(() => {
     const session = getSession();
@@ -92,12 +101,12 @@ export default function OnboardingPage() {
     });
   }, [form]);
 
-  const handleFinish = async () => {
+  // Step 4: Create Wix site and go to CMS activation
+  const handleCreateSite = async () => {
     if (!form.storeName || !form.logoVariant) return;
 
     setCreating(true);
     try {
-      // 1. Create Wix site
       const createRes = await fetch("/api/wix/create-site", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -116,33 +125,20 @@ export default function OnboardingPage() {
         }),
       });
 
-      const siteData = await createRes.json();
+      const data = await createRes.json();
       if (!createRes.ok) {
-        toast.error(siteData.error || "Erro ao criar site");
+        toast.error(data.error || "Erro ao criar site");
         return;
       }
 
-      // 2. Generate default content
-      const content = generateDefaultContent({
-        storeName: form.storeName,
-        primaryColor: form.palette.primary,
-        secondaryColor: form.palette.secondary,
-        accentColor: form.palette.accent,
-        layoutType: form.layoutType,
-        bannerBgColor: form.bannerBgColor,
-        bannerTextColor: form.bannerTextColor,
-        bannerCtaColor: form.bannerCtaColor,
-        logoSvg: form.logoSvg,
-        logoVariant: form.logoVariant,
-      });
+      setSiteData(data);
 
-      // 3. Update session
       const updatedOnboarding = {
         ...getSession().onboarding!,
-        siteId: siteData.siteId,
-        siteUrl: siteData.siteUrl,
+        siteId: data.siteId,
+        siteUrl: data.siteUrl,
         siteName: form.storeName,
-        instanceId: siteData.metaSiteId,
+        instanceId: data.metaSiteId,
         apiKey: "",
         focus: form.focus,
         accentColor: form.palette.accent,
@@ -156,11 +152,72 @@ export default function OnboardingPage() {
 
       setSession({
         onboarding: updatedOnboarding,
-        storeId: siteData.storeId,
-        content,
+        storeId: data.storeId,
       });
 
-      // 4. Trigger injection
+      toast.success("Site criado no Wix!");
+      setStep(4); // Go to CMS activation step
+    } catch (err) {
+      console.error("[ONBOARDING] handleCreateSite error:", err);
+      toast.error(err instanceof Error ? err.message : "Erro ao criar site");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // Check if CMS is active
+  const checkCms = async () => {
+    const sid = siteData?.siteId || siteData?.metaSiteId;
+    if (!sid) {
+      toast.error("Site não encontrado");
+      return;
+    }
+
+    setChecking(true);
+    try {
+      const res = await fetch("/api/wix/check-cms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ siteId: sid }),
+      });
+
+      const data = await res.json();
+      if (data.active) {
+        setCmsActive(true);
+        toast.success("CMS ativado com sucesso!");
+      } else {
+        toast.error("CMS ainda não ativado. Siga os passos e tente novamente.");
+      }
+    } catch {
+      toast.error("Erro ao verificar CMS");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  // Step 5: Inject content and publish
+  const handlePublish = async () => {
+    if (!siteData) return;
+
+    setPublishing(true);
+    try {
+      const content = generateDefaultContent({
+        storeName: form.storeName,
+        primaryColor: form.palette.primary,
+        secondaryColor: form.palette.secondary,
+        accentColor: form.palette.accent,
+        layoutType: form.layoutType,
+        bannerBgColor: form.bannerBgColor,
+        bannerTextColor: form.bannerTextColor,
+        bannerCtaColor: form.bannerCtaColor,
+        logoSvg: form.logoSvg,
+        logoVariant: form.logoVariant || "bold",
+      });
+
+      const updatedOnboarding = getSession().onboarding!;
+
+      setSession({ content });
+
       const injectRes = await fetch("/api/inject", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -182,13 +239,13 @@ export default function OnboardingPage() {
         return;
       }
 
-      // 5. Redirect to publishing
-      toast.success("Loja criada! Publicando...");
+      toast.success("Publicando loja...");
       router.push(`/publishing?jobId=${injectData.jobId}`);
-    } catch {
-      toast.error("Erro ao criar site");
+    } catch (err) {
+      console.error("[ONBOARDING] handlePublish error:", err);
+      toast.error(err instanceof Error ? err.message : "Erro ao publicar");
     } finally {
-      setCreating(false);
+      setPublishing(false);
     }
   };
 
@@ -211,6 +268,7 @@ export default function OnboardingPage() {
 
         <StepIndicator steps={FLOW_STEPS} currentStep={step} />
 
+        {/* Step 0: Name + Focus + Palette */}
         {step === 0 && (
           <Card className="border-zinc-800 bg-zinc-900">
             <CardHeader>
@@ -262,6 +320,7 @@ export default function OnboardingPage() {
           </Card>
         )}
 
+        {/* Step 1: Layout */}
         {step === 1 && (
           <Card className="border-zinc-800 bg-zinc-900">
             <CardHeader>
@@ -288,6 +347,7 @@ export default function OnboardingPage() {
           </Card>
         )}
 
+        {/* Step 2: Banner Colors */}
         {step === 2 && (
           <Card className="border-zinc-800 bg-zinc-900">
             <CardHeader>
@@ -322,6 +382,7 @@ export default function OnboardingPage() {
           </Card>
         )}
 
+        {/* Step 3: Logo */}
         {step === 3 && (
           <Card className="border-zinc-800 bg-zinc-900">
             <CardHeader>
@@ -343,16 +404,112 @@ export default function OnboardingPage() {
                   <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
                 </Button>
                 <Button
-                  onClick={handleFinish}
+                  onClick={handleCreateSite}
                   disabled={!canProceed[3] || creating}
                   className="bg-emerald-500 text-black font-bold"
                 >
                   {creating ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Criando e publicando...</>
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Criando site...</>
                   ) : (
-                    <>Finalizar <ArrowRight className="ml-2 h-4 w-4" /></>
+                    <>Criar Site <ArrowRight className="ml-2 h-4 w-4" /></>
                   )}
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 4: Activate CMS */}
+        {step === 4 && (
+          <Card className="border-zinc-800 bg-zinc-900">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white">
+                <Database className="h-5 w-5 text-emerald-500" />
+                Ativar o CMS da sua Loja
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+                <p className="text-sm text-amber-200">
+                  Seu site foi criado! Agora precisamos que você ative o CMS no editor do Wix. São apenas <strong>3 cliques</strong>:
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex gap-4 items-start">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-black">1</div>
+                  <div>
+                    <p className="font-medium text-white">Abra o editor do seu site</p>
+                    <p className="text-sm text-zinc-400 mt-1">Clique no botão abaixo para abrir o editor</p>
+                    <a
+                      href={`https://manage.wix.com/dashboard/${siteData?.siteId || siteData?.metaSiteId}/home`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-flex items-center gap-2 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-emerald-400 hover:border-emerald-500 transition-colors"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Abrir Editor do Site
+                    </a>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 items-start">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-black">2</div>
+                  <div>
+                    <p className="font-medium text-white">Clique em &quot;CMS&quot; no painel lateral</p>
+                    <p className="text-sm text-zinc-400 mt-1">
+                      No editor, procure o ícone de CMS no menu lateral esquerdo (parece uma tabela). Clique nele e depois em <strong>&quot;Comece adicionando conteúdo&quot;</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 items-start">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-black">3</div>
+                  <div>
+                    <p className="font-medium text-white">Crie uma coleção qualquer e publique</p>
+                    <p className="text-sm text-zinc-400 mt-1">
+                      Selecione <strong>&quot;Começar do zero&quot;</strong>, dê qualquer nome e clique em criar. Depois clique em <strong>&quot;Publicar&quot;</strong> no canto superior direito do editor.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-800 pt-4 space-y-3">
+                <p className="text-sm text-zinc-400 text-center">
+                  Depois de publicar, clique no botão abaixo para verificar:
+                </p>
+
+                {cmsActive ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-400">
+                      <CheckCircle2 className="h-4 w-4" />
+                      CMS ativado com sucesso!
+                    </div>
+                    <Button
+                      onClick={handlePublish}
+                      disabled={publishing}
+                      className="w-full bg-emerald-500 text-black font-bold hover:bg-emerald-400"
+                    >
+                      {publishing ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando loja...</>
+                      ) : (
+                        <>Publicar Loja <ArrowRight className="ml-2 h-4 w-4" /></>
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={checkCms}
+                    disabled={checking}
+                    className="w-full bg-emerald-500 text-black font-bold hover:bg-emerald-400"
+                  >
+                    {checking ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...</>
+                    ) : (
+                      <><RefreshCw className="mr-2 h-4 w-4" /> Verificar Ativação</>
+                    )}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

@@ -14,6 +14,7 @@ const FLOW_STEPS = [
     { label: 'Layout' },
     { label: 'Banners' },
     { label: 'Logo' },
+    { label: 'Ativar CMS' },
     { label: 'Publicar' },
 ];
 
