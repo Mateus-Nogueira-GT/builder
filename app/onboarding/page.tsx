@@ -10,6 +10,7 @@ import { BannerColorPicker } from "@/components/BannerColorPicker";
 import { LogoSelector } from "@/components/LogoSelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSession, setSession } from "@/lib/session";
 import { generateDefaultContent } from "@/lib/defaultContent";
@@ -26,6 +27,7 @@ const FLOW_STEPS = [
 
 interface OnboardingState {
   storeName: string;
+  focus: "brasileirao" | "copa" | "retro" | "todos";
   palette: Palette;
   layoutType: "classic" | "modern";
   bannerBgColor: string;
@@ -46,6 +48,7 @@ export default function OnboardingPage() {
     const defaultPalette = PALETTES[0];
     return {
       storeName: ob?.storeName || "",
+      focus: (ob?.focus as "brasileirao" | "copa" | "retro" | "todos") || "todos",
       palette: PALETTES.find(p => p.primary === ob?.primaryColor) || defaultPalette,
       layoutType: "classic",
       bannerBgColor: defaultPalette.primary,
@@ -73,7 +76,7 @@ export default function OnboardingPage() {
         instagram: "",
         city: "",
         state: "",
-        focus: "todos",
+        focus: form.focus,
         featuredTeams: [],
         activePromotion: "Compre 2 Leve 3",
         primaryColor: form.palette.primary,
@@ -100,6 +103,7 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           storeName: form.storeName,
+          focus: form.focus,
           primaryColor: form.palette.primary,
           secondaryColor: form.palette.secondary,
           accentColor: form.palette.accent,
@@ -140,6 +144,7 @@ export default function OnboardingPage() {
         siteName: form.storeName,
         instanceId: siteData.metaSiteId,
         apiKey: "",
+        focus: form.focus,
         accentColor: form.palette.accent,
         layoutType: form.layoutType,
         bannerBgColor: form.bannerBgColor,
@@ -223,6 +228,20 @@ export default function OnboardingPage() {
                   placeholder="Ex: Camisa10 Store"
                   className="bg-zinc-800 border-zinc-700"
                 />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-zinc-300">Foco da Loja</label>
+                <Select value={form.focus} onValueChange={(v) => update({ focus: v as OnboardingState["focus"] })}>
+                  <SelectTrigger className="bg-zinc-800 border-zinc-700">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="brasileirao">Brasileirão</SelectItem>
+                    <SelectItem value="copa">Copa do Mundo</SelectItem>
+                    <SelectItem value="retro">Retrô</SelectItem>
+                    <SelectItem value="todos">Todos os estilos</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <PaletteSelector
                 storeName={form.storeName}
