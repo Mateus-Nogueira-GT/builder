@@ -97,6 +97,13 @@ export default function OnboardingPage() {
         heroBannerThumbnailUrl: "",
         siteName: form.storeName,
         instanceId: "",
+        accentColor: form.palette.accent,
+        layoutType: form.layoutType,
+        bannerBgColor: form.bannerBgColor,
+        bannerTextColor: form.bannerTextColor,
+        bannerCtaColor: form.bannerCtaColor,
+        logoSvg: form.logoSvg,
+        logoVariant: form.logoVariant || undefined,
       },
     });
   }, [form]);
@@ -182,11 +189,15 @@ export default function OnboardingPage() {
       });
 
       const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Erro ao verificar CMS");
+        return;
+      }
       if (data.active) {
         setCmsActive(true);
         toast.success("CMS ativado com sucesso!");
       } else {
-        toast.error("CMS ainda não ativado. Siga os passos e tente novamente.");
+        toast.error(data.reason || "CMS ainda não ativado. Siga os passos e tente novamente.");
       }
     } catch {
       toast.error("Erro ao verificar CMS");
@@ -214,7 +225,11 @@ export default function OnboardingPage() {
         logoVariant: form.logoVariant || "bold",
       });
 
-      const updatedOnboarding = getSession().onboarding!;
+      const updatedOnboarding = getSession().onboarding;
+      if (!updatedOnboarding) {
+        toast.error("Dados da sessão perdidos. Recarregue a página.");
+        return;
+      }
 
       setSession({ content });
 
@@ -236,6 +251,11 @@ export default function OnboardingPage() {
       const injectData = await injectRes.json();
       if (!injectRes.ok) {
         toast.error(injectData.error || "Erro ao iniciar publicação");
+        return;
+      }
+
+      if (!injectData.jobId) {
+        toast.error("Erro ao iniciar publicação — jobId ausente");
         return;
       }
 

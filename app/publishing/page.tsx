@@ -77,7 +77,7 @@ export default function PublishingPage() {
                     <p className="text-zinc-400">Publicando sua loja...</p>
                 </div>
 
-                <StepIndicator steps={FLOW_STEPS} currentStep={4} />
+                <StepIndicator steps={FLOW_STEPS} currentStep={5} />
 
                 <Suspense fallback={<div className="text-center py-12 text-zinc-400">Carregando...</div>}>
                     <PublishingContent />
