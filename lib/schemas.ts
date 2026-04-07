@@ -19,6 +19,8 @@ export interface Store {
   secondary_color: string;
   connection_method: string | null;
   template_ready: boolean;
+  template_id: string | null;
+  status: "pending" | "provisioning" | "provisioned" | "error";
   created_at: string;
 }
 
