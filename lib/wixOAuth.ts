@@ -46,6 +46,7 @@ export async function getOAuthToken(instanceId: string): Promise<string> {
 
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
+    console.error(`[WixOAuth] Token request failed for instanceId=${instanceId} — status=${res.status}: ${errText}`);
     throw new Error(
       `Wix OAuth token request failed (${res.status}): ${errText}`
     );
@@ -55,8 +56,11 @@ export async function getOAuthToken(instanceId: string): Promise<string> {
   const accessToken: string = data.access_token;
 
   if (!accessToken) {
+    console.error("[WixOAuth] Response missing access_token:", JSON.stringify(data));
     throw new Error("Wix OAuth response missing access_token");
   }
+
+  console.log(`[WixOAuth] Token obtained for instanceId=${instanceId} (expires in 3.5h)`);
 
   tokenCache.set(instanceId, {
     accessToken,
@@ -103,11 +107,12 @@ export async function installAppOnSite(
 
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    console.warn(`App install returned ${res.status}: ${errText}. Using metaSiteId as instanceId fallback.`);
+    console.warn(`[WixOAuth] App install returned ${res.status}: ${errText}. Falling back to metaSiteId.`);
     return metaSiteId;
   }
 
   const data = await res.json();
+  console.log("[WixOAuth] App install response:", JSON.stringify(data));
 
   // Extract instanceId from response if available
   const instanceId =
@@ -115,5 +120,6 @@ export async function installAppOnSite(
     data?.instanceId ??
     metaSiteId;
 
+  console.log(`[WixOAuth] Resolved instanceId=${instanceId} (metaSiteId=${metaSiteId})`);
   return instanceId;
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { createLog, createProvisionRun, appendProvisionLog, getProvisionRun } from '@/lib/provisioning';
-import { publishSite, runTemplatePreflight, ensureCollection, clearCollection, upsertItem, bulkUpsertItems, createProducts, enableCms } from '@/lib/wix';
+import { publishSite, runTemplatePreflight, ensureCollection, clearCollection, upsertItem, bulkUpsertItems, createProducts, enableCms, resolveAuthHeader } from '@/lib/wix';
 import { fetchTorcedorProductIds, fetchProductsByFocus } from '@/lib/externalCatalog';
 import { mapToWixProduct } from '@/lib/productMapper';
 import { COLLECTIONS } from '@/config/collections';
@@ -23,29 +23,33 @@ export async function POST(request: Request) {
         let resolvedApiKey = apiKey as string | undefined;
         let resolvedSiteId = siteId as string | undefined;
 
+        let store: { id: string; name: string; wix_api_key: string | null; wix_site_id: string; wix_instance_id: string | null } | null = null;
+
         if (resolvedStoreId) {
-            const { data: store, error: storeError } = await supabase
+            const { data: storeData, error: storeError } = await supabase
                 .from('stores')
-                .select('id, name, wix_api_key, wix_site_id')
+                .select('id, name, wix_api_key, wix_site_id, wix_instance_id')
                 .eq('id', resolvedStoreId)
                 .single();
 
-            if (storeError || !store) {
+            if (storeError || !storeData) {
                 return NextResponse.json(
                     { error: 'Loja selecionada nao foi encontrada no banco.' },
                     { status: 404 }
                 );
             }
 
-            if (!store.wix_api_key || !store.wix_site_id) {
+            store = storeData;
+
+            if (!storeData.wix_api_key || !storeData.wix_site_id) {
                 return NextResponse.json(
                     { error: 'A loja selecionada nao possui apiKey ou siteId salvos.' },
                     { status: 400 }
                 );
             }
 
-            resolvedApiKey = store.wix_api_key;
-            resolvedSiteId = store.wix_site_id;
+            resolvedApiKey = storeData.wix_api_key;
+            resolvedSiteId = storeData.wix_site_id;
         }
 
         if (!payload || !resolvedSiteId || !resolvedApiKey) {
@@ -63,6 +67,7 @@ export async function POST(request: Request) {
                 apiKey: resolvedApiKey,
                 siteId: resolvedSiteId,
                 storeId: resolvedStoreId || null,
+                instanceId: store?.wix_instance_id || null,
             },
         });
 
@@ -112,6 +117,8 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
     const run = await getProvisionRun(runId);
     const payload = run.payload as Record<string, unknown>;
     const apiKey = payload.apiKey as string;
+    const instanceId = payload.instanceId as string | undefined;
+    const authToken = await resolveAuthHeader(apiKey, instanceId);
     const siteId = payload.siteId as string;
     const storeId = payload.storeId as string | undefined;
     const content = payload as Record<string, unknown>;
@@ -128,7 +135,8 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
     });
 
     const accountId = process.env.WIX_ACCOUNT_ID || '';
-    const cmsActive = await enableCms(apiKey, siteId, accountId);
+    const adminKey = process.env.WIX_ADMIN_API_KEY || '';
+    const cmsActive = await enableCms(authToken, siteId, accountId, adminKey);
 
     if (cmsActive) {
         await appendProvisionLog(runId, createLog('CMS ativado com sucesso.', 'success', 'cms-activation'), {
@@ -142,7 +150,7 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         });
     }
 
-    const preflight = await runTemplatePreflight(apiKey, siteId, REQUIRED_COLLECTIONS);
+    const preflight = await runTemplatePreflight(authToken, siteId, REQUIRED_COLLECTIONS);
     for (const check of preflight.checks) {
         await appendProvisionLog(
             runId,
@@ -161,7 +169,7 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         currentStep: 'collections',
     });
 
-    await ensureCollection(apiKey, siteId, COLLECTIONS.storeConfig, 'Configuracoes da Loja', [
+    await ensureCollection(authToken, siteId, COLLECTIONS.storeConfig, 'Configuracoes da Loja', [
         { key: 'topbar', type: 'TEXT' },
         { key: 'whatsappGreeting', type: 'TEXT' },
         { key: 'tagline', type: 'TEXT' },
@@ -177,7 +185,7 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         { key: 'logoSvg', type: 'TEXT' },
         { key: 'logoVariant', type: 'TEXT' },
     ]);
-    await ensureCollection(apiKey, siteId, COLLECTIONS.banners, 'Banners e Hero', [
+    await ensureCollection(authToken, siteId, COLLECTIONS.banners, 'Banners e Hero', [
         { key: 'title', type: 'TEXT' },
         { key: 'subtext', type: 'TEXT' },
         { key: 'ctaLabel', type: 'TEXT' },
@@ -190,18 +198,18 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         { key: 'textColor', type: 'TEXT' },
         { key: 'ctaColor', type: 'TEXT' },
     ]);
-    await ensureCollection(apiKey, siteId, COLLECTIONS.trustBar, 'Trust Bar', [
+    await ensureCollection(authToken, siteId, COLLECTIONS.trustBar, 'Trust Bar', [
         { key: 'icon', type: 'TEXT' },
         { key: 'text', type: 'TEXT' },
         { key: 'order', type: 'NUMBER' },
     ]);
-    await ensureCollection(apiKey, siteId, COLLECTIONS.categories, 'Categorias', [
+    await ensureCollection(authToken, siteId, COLLECTIONS.categories, 'Categorias', [
         { key: 'name', type: 'TEXT' },
         { key: 'image', type: 'URL' },
         { key: 'link', type: 'URL' },
         { key: 'order', type: 'NUMBER' },
     ]);
-    await ensureCollection(apiKey, siteId, COLLECTIONS.promoBanner, 'Banner Promocional', [
+    await ensureCollection(authToken, siteId, COLLECTIONS.promoBanner, 'Banner Promocional', [
         { key: 'title', type: 'TEXT' },
         { key: 'subtitle', type: 'TEXT' },
         { key: 'ctaLabel', type: 'TEXT' },
@@ -227,8 +235,8 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
     const promoBanner = (content.promoBanner as Record<string, unknown>) || {};
     const footer = (content.footer as Record<string, unknown>) || {};
 
-    await clearCollection(apiKey, siteId, COLLECTIONS.storeConfig);
-    await upsertItem(apiKey, siteId, COLLECTIONS.storeConfig, {
+    await clearCollection(authToken, siteId, COLLECTIONS.storeConfig);
+    await upsertItem(authToken, siteId, COLLECTIONS.storeConfig, {
         topbar: content.topbar || '',
         whatsappGreeting: content.whatsappGreeting || '',
         tagline: footer.tagline || '',
@@ -253,8 +261,8 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
     };
 
     await injectCollection(COLLECTIONS.banners, 'Banners', async () => {
-        await clearCollection(apiKey, siteId, COLLECTIONS.banners);
-        await upsertItem(apiKey, siteId, COLLECTIONS.banners, {
+        await clearCollection(authToken, siteId, COLLECTIONS.banners);
+        await upsertItem(authToken, siteId, COLLECTIONS.banners, {
             title: (promoBanner.title as string) || '',
             subtext: (promoBanner.subtitle as string) || '',
             ctaLabel: (promoBanner.ctaLabel as string) || '',
@@ -269,22 +277,22 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
     });
 
     await injectCollection(COLLECTIONS.trustBar, 'Trust Bar', async () => {
-        await clearCollection(apiKey, siteId, COLLECTIONS.trustBar);
-        await bulkUpsertItems(apiKey, siteId, COLLECTIONS.trustBar,
+        await clearCollection(authToken, siteId, COLLECTIONS.trustBar);
+        await bulkUpsertItems(authToken, siteId, COLLECTIONS.trustBar,
             trustBar.map((item, index) => ({ ...item, order: index }))
         );
     });
 
     await injectCollection(COLLECTIONS.categories, 'Categorias', async () => {
-        await clearCollection(apiKey, siteId, COLLECTIONS.categories);
-        await bulkUpsertItems(apiKey, siteId, COLLECTIONS.categories,
+        await clearCollection(authToken, siteId, COLLECTIONS.categories);
+        await bulkUpsertItems(authToken, siteId, COLLECTIONS.categories,
             categories.map((item, index) => ({ ...item, order: index }))
         );
     });
 
     await injectCollection(COLLECTIONS.promoBanner, 'Promo Banner', async () => {
-        await clearCollection(apiKey, siteId, COLLECTIONS.promoBanner);
-        await upsertItem(apiKey, siteId, COLLECTIONS.promoBanner, {
+        await clearCollection(authToken, siteId, COLLECTIONS.promoBanner);
+        await upsertItem(authToken, siteId, COLLECTIONS.promoBanner, {
             ...promoBanner, image: images.promoBanner || '',
         });
     });
@@ -311,7 +319,7 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         const initialProducts = await fetchProductsByFocus(focus, 100);
         if (initialProducts.length > 0) {
             const wixProducts = initialProducts.map(mapToWixProduct);
-            const result = await createProducts(apiKey, siteId, wixProducts);
+            const result = await createProducts(authToken, siteId, wixProducts);
             await appendProvisionLog(
                 runId,
                 createLog(`Produtos iniciais: ${result.created} criados, ${result.failed} falhas.`, result.failed > 0 ? 'warning' : 'success', 'products'),
@@ -336,7 +344,7 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         currentStep: 'publish',
     });
 
-    const published = await publishSite(apiKey, siteId);
+    const published = await publishSite(authToken, siteId);
     if (!published) {
         await appendProvisionLog(runId, createLog('Falha na publicação automática. A loja está montada, mas pode exigir publicação manual no Wix.', 'warning', 'publish'), {
             status: 'running',
@@ -367,7 +375,8 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
                 body: JSON.stringify({
                     storeId: storeId || '',
                     siteId,
-                    apiKey,
+                    apiKey: apiKey,
+                    instanceId: instanceId || null,
                     totalProductIds: allProductIds,
                     initialOffset: 100,
                 }),
