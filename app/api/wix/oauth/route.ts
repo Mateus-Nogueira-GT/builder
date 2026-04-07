@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { getPublicBaseUrl } from "@/lib/url";
 
 // Wix OAuth — Step 1: Generate authorization URL
 export async function GET(request: Request) {
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
   }
 
   const appId = process.env.WIX_OAUTH_APP_ID!;
-  const baseUrl = process.env.NEXTAUTH_URL || new URL(request.url).origin;
+  const baseUrl = getPublicBaseUrl(request);
   const redirectUri = `${baseUrl}/api/wix/oauth/callback`;
 
   // Store user ID and template choice in state param

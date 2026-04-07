@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getPublicBaseUrl } from "@/lib/url";
 
 // Wix OAuth — Step 2: Handle callback, exchange code for tokens
 export async function GET(request: Request) {
@@ -8,15 +9,17 @@ export async function GET(request: Request) {
   const state = searchParams.get("state");
   const instanceId = searchParams.get("instanceId");
 
+  const baseUrl = getPublicBaseUrl(request);
+
   if (!code || !state) {
-    return NextResponse.redirect(new URL("/onboarding?error=oauth_failed", request.url));
+    return NextResponse.redirect(new URL("/onboarding?error=oauth_failed", baseUrl));
   }
 
   let stateData: { userId: string; storeName: string; templateSiteId: string };
   try {
     stateData = JSON.parse(Buffer.from(state, "base64").toString());
   } catch {
-    return NextResponse.redirect(new URL("/onboarding?error=invalid_state", request.url));
+    return NextResponse.redirect(new URL("/onboarding?error=invalid_state", baseUrl));
   }
 
   const appId = process.env.WIX_OAUTH_APP_ID!;
@@ -38,7 +41,7 @@ export async function GET(request: Request) {
     if (!tokenRes.ok) {
       const errText = await tokenRes.text().catch(() => "");
       console.error("Wix OAuth token error:", tokenRes.status, errText);
-      return NextResponse.redirect(new URL("/onboarding?error=token_failed", request.url));
+      return NextResponse.redirect(new URL("/onboarding?error=token_failed", baseUrl));
     }
 
     const tokenData = await tokenRes.json();
@@ -46,11 +49,11 @@ export async function GET(request: Request) {
     const refreshToken = tokenData.refresh_token;
 
     if (!accessToken) {
-      return NextResponse.redirect(new URL("/onboarding?error=no_token", request.url));
+      return NextResponse.redirect(new URL("/onboarding?error=no_token", baseUrl));
     }
 
     // Save tokens to Supabase as a pending store
-    const { data: store } = await supabase.from("stores").insert({
+    const { data: store, error: dbError } = await supabase.from("stores").insert({
       owner_id: stateData.userId,
       name: stateData.storeName || "Nova Loja",
       wix_api_key: accessToken,
@@ -64,6 +67,10 @@ export async function GET(request: Request) {
       template_ready: false,
     }).select("id").single();
 
+    if (dbError) {
+      console.error("Supabase insert error:", dbError.message);
+    }
+
     // Redirect back to onboarding with success + store ID
     const params = new URLSearchParams({
       wix_connected: "true",
@@ -72,9 +79,9 @@ export async function GET(request: Request) {
       pendingStoreId: store?.id || "",
     });
 
-    return NextResponse.redirect(new URL(`/onboarding?${params.toString()}`, request.url));
+    return NextResponse.redirect(new URL(`/onboarding?${params.toString()}`, baseUrl));
   } catch (err) {
     console.error("Wix OAuth callback error:", err);
-    return NextResponse.redirect(new URL("/onboarding?error=oauth_error", request.url));
+    return NextResponse.redirect(new URL("/onboarding?error=oauth_error", baseUrl));
   }
 }
