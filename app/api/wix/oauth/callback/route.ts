@@ -21,7 +21,6 @@ export async function GET(request: Request) {
 
   const appId = process.env.WIX_OAUTH_APP_ID!;
   const appSecret = process.env.WIX_OAUTH_APP_SECRET!;
-  const baseUrl = process.env.NEXTAUTH_URL || new URL(request.url).origin;
 
   try {
     // Exchange authorization code for access token
@@ -50,12 +49,13 @@ export async function GET(request: Request) {
       return NextResponse.redirect(new URL("/onboarding?error=no_token", request.url));
     }
 
-    // Save tokens to Supabase (in stores table as pending connection)
-    await supabase.from("stores").insert({
+    // Save tokens to Supabase as a pending store
+    const { data: store } = await supabase.from("stores").insert({
       owner_id: stateData.userId,
       name: stateData.storeName || "Nova Loja",
       wix_api_key: accessToken,
-      wix_site_id: instanceId || "pending",
+      wix_refresh_token: refreshToken || "",
+      wix_site_id: "pending",
       wix_site_url: "",
       wix_instance_id: instanceId || "",
       primary_color: "#10b981",
@@ -64,11 +64,12 @@ export async function GET(request: Request) {
       template_ready: false,
     }).select("id").single();
 
-    // Redirect back to onboarding with success + data
+    // Redirect back to onboarding with success + store ID
     const params = new URLSearchParams({
       wix_connected: "true",
       storeName: stateData.storeName,
       templateSiteId: stateData.templateSiteId,
+      pendingStoreId: store?.id || "",
     });
 
     return NextResponse.redirect(new URL(`/onboarding?${params.toString()}`, request.url));

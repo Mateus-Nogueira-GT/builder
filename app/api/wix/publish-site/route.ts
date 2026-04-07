@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
-const WIX_API_KEY = process.env.WIX_ADMIN_API_KEY!;
-
 export async function POST(request: Request) {
   try {
     const { storeId, siteId } = await request.json();
@@ -11,11 +9,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "siteId required" }, { status: 400 });
     }
 
+    // Get the user's OAuth token from the store record
+    const { data: store } = await supabase
+      .from("stores")
+      .select("wix_api_key")
+      .eq("id", storeId)
+      .single();
+
+    if (!store?.wix_api_key) {
+      return NextResponse.json({ error: "Token não encontrado" }, { status: 400 });
+    }
+
+    const authToken = store.wix_api_key;
+
     // 1. Publish
     await fetch("https://www.wixapis.com/site-publisher/v1/site/publish", {
       method: "POST",
       headers: {
-        Authorization: WIX_API_KEY,
+        Authorization: authToken,
         "wix-site-id": siteId,
         "Content-Type": "application/json",
       },
@@ -30,7 +41,7 @@ export async function POST(request: Request) {
     const prodRes = await fetch("https://www.wixapis.com/stores/v1/products/query", {
       method: "POST",
       headers: {
-        Authorization: WIX_API_KEY,
+        Authorization: authToken,
         "wix-site-id": siteId,
         "Content-Type": "application/json",
       },

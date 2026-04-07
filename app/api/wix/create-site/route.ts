@@ -2,9 +2,6 @@ import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { supabase } from "@/lib/supabase";
 
-const WIX_API_KEY = process.env.WIX_ADMIN_API_KEY!;
-const WIX_ACCOUNT_ID = process.env.WIX_ACCOUNT_ID!;
-
 const ALLOWED_TEMPLATES = new Set([
   "c208eaf8-8ed3-4ad2-947a-db65813006c2",
   "962b66f7-c9d1-4ba7-be05-354465e71d40",
@@ -23,7 +20,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { storeName, templateSiteId } = body;
+    const { storeName, templateSiteId, pendingStoreId } = body;
 
     if (!storeName) {
       return NextResponse.json({ error: "Nome da loja é obrigatório" }, { status: 400 });
@@ -33,14 +30,51 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Template inválido" }, { status: 400 });
     }
 
-    // 1. Duplicate
+    // Get the user's OAuth token from the pending store record
+    let userAccessToken: string | null = null;
+    let storeId = pendingStoreId;
+
+    if (pendingStoreId) {
+      const { data: store } = await supabase
+        .from("stores")
+        .select("wix_api_key")
+        .eq("id", pendingStoreId)
+        .eq("owner_id", token.id)
+        .single();
+
+      userAccessToken = store?.wix_api_key || null;
+    }
+
+    if (!userAccessToken) {
+      // Fallback: find the most recent pending store for this user
+      const { data: store } = await supabase
+        .from("stores")
+        .select("id, wix_api_key")
+        .eq("owner_id", token.id)
+        .eq("wix_site_id", "pending")
+        .eq("connection_method", "oauth")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!store?.wix_api_key) {
+        return NextResponse.json(
+          { error: "Token OAuth não encontrado. Conecte com o Wix primeiro." },
+          { status: 400 }
+        );
+      }
+
+      userAccessToken = store.wix_api_key;
+      storeId = store.id;
+    }
+
+    // 1. Duplicate template using the USER's OAuth token
     const dupRes = await fetch(
       "https://www.wixapis.com/site-actions/v1/sites/duplicate",
       {
         method: "POST",
         headers: {
-          Authorization: WIX_API_KEY,
-          "wix-account-id": WIX_ACCOUNT_ID,
+          Authorization: userAccessToken,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -52,6 +86,7 @@ export async function POST(request: Request) {
 
     if (!dupRes.ok) {
       const errText = await dupRes.text().catch(() => "");
+      console.error("Duplicate site error:", dupRes.status, errText);
       return NextResponse.json(
         { error: `Falha ao criar site (${dupRes.status}): ${errText.slice(0, 200)}` },
         { status: 502 }
@@ -65,12 +100,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Site criado mas ID não retornado" }, { status: 502 });
     }
 
-    // 2. Publish the site NOW
+    // 2. Publish the site using the user's token
     try {
       await fetch("https://www.wixapis.com/site-publisher/v1/site/publish", {
         method: "POST",
         headers: {
-          Authorization: WIX_API_KEY,
+          Authorization: userAccessToken,
           "wix-site-id": metaSiteId,
           "Content-Type": "application/json",
         },
@@ -86,7 +121,7 @@ export async function POST(request: Request) {
       const prodRes = await fetch("https://www.wixapis.com/stores/v1/products/query", {
         method: "POST",
         headers: {
-          Authorization: WIX_API_KEY,
+          Authorization: userAccessToken,
           "wix-site-id": metaSiteId,
           "Content-Type": "application/json",
         },
@@ -99,23 +134,18 @@ export async function POST(request: Request) {
       }
     } catch { /* continue */ }
 
-    // 4. Save to Supabase with public URL
+    // 4. Update the existing store record with real site data
     const dashboardUrl = `https://manage.wix.com/dashboard/${metaSiteId}`;
-    const { data: store, error: dbError } = await supabase
+    const { error: dbError } = await supabase
       .from("stores")
-      .insert({
-        owner_id: token.id,
+      .update({
         name: storeName,
-        wix_api_key: WIX_API_KEY,
         wix_site_id: metaSiteId,
         wix_site_url: siteUrl,
         wix_instance_id: metaSiteId,
-        primary_color: "#10b981",
-        secondary_color: "#18181b",
-        connection_method: "auto",
+        template_ready: true,
       })
-      .select("*")
-      .single();
+      .eq("id", storeId);
 
     if (dbError) {
       return NextResponse.json(
@@ -125,7 +155,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      storeId: store.id,
+      storeId,
       siteId: metaSiteId,
       siteUrl,
       dashboardUrl,

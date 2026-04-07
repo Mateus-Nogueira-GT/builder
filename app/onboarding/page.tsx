@@ -31,12 +31,13 @@ function OnboardingContent() {
   const [publicUrl, setPublicUrl] = useState("");
   const [wixConnected, setWixConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [pendingStoreId, setPendingStoreId] = useState("");
 
   // Check if returning from Wix OAuth
   useEffect(() => {
     const connected = searchParams.get("wix_connected");
     const name = searchParams.get("storeName");
-    const template = searchParams.get("templateSiteId");
+    const storeId = searchParams.get("pendingStoreId");
     const error = searchParams.get("error");
 
     if (error) {
@@ -48,8 +49,8 @@ function OnboardingContent() {
     if (connected === "true") {
       setWixConnected(true);
       if (name) setStoreName(name);
+      if (storeId) setPendingStoreId(storeId);
       setStep(2);
-      // Auto-proceed to create site
       toast.success("Wix conectado com sucesso!");
     }
   }, [searchParams]);
@@ -117,6 +118,7 @@ function OnboardingContent() {
         body: JSON.stringify({
           storeName,
           templateSiteId: selectedTemplate.siteId,
+          pendingStoreId,
         }),
       });
 
