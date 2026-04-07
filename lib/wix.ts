@@ -8,11 +8,10 @@
  */
 
 import type { WixCollectionField, PreflightResult, PreflightCheck } from "./schemas";
-import { getOAuthToken } from "./wixOAuth";
 
 const WIX_API_BASE = "https://www.wixapis.com/wix-data/v2";
 const WIX_SITE_PROPERTIES_API = "https://www.wixapis.com/site-properties/v4";
-const WIX_PUBLISH_API = "https://www.wixapis.com/site/v1";
+const WIX_PUBLISH_API = "https://www.wixapis.com/site-publisher/v1/site";
 
 /* ─────────────────────── Helpers HTTP ──────────────────── */
 
@@ -74,28 +73,6 @@ async function withRetry<T>(
   }
 
   throw lastError;
-}
-
-/* ───────────── OAuth Auth Resolution ────────────── */
-
-/**
- * Resolves the Authorization header for a site.
- * Uses OAuth token if instanceId is provided, otherwise falls back to apiKey.
- */
-export async function resolveAuthHeader(
-  apiKey: string,
-  instanceId?: string | null
-): Promise<string> {
-  // If we have an instanceId, prefer OAuth
-  if (instanceId) {
-    try {
-      return await getOAuthToken(instanceId);
-    } catch (err) {
-      console.warn("OAuth token failed, falling back to apiKey:", err instanceof Error ? err.message : err);
-    }
-  }
-  // Fallback to direct apiKey
-  return apiKey;
 }
 
 /* ─────────────────── Collection Management ────────────── */
@@ -342,27 +319,18 @@ export async function runTemplatePreflight(
  * Attempts to enable CMS on a Wix site by installing the Wix Data app.
  * Tries multiple approaches: install app, then verify CMS is active.
  * Returns true if CMS is active after attempts.
- *
- * @param apiKey - Site-scoped auth token (OAuth or API key) for site-level checks
- * @param siteId - The site's metaSiteId
- * @param accountId - The Wix account ID
- * @param adminApiKey - Account-level admin key for app installation (falls back to apiKey)
  */
 export async function enableCms(
   apiKey: string,
   siteId: string,
-  accountId: string,
-  adminApiKey?: string
+  accountId: string
 ): Promise<boolean> {
-  const accountKey = adminApiKey || apiKey;
-
-  // First check if CMS is already active (site-level, uses OAuth token)
+  // First check if CMS is already active
   if (await isCmsActive(apiKey, siteId)) {
     return true;
   }
 
   // Try to install the Wix Data / CMS app to enable it
-  // These are ACCOUNT-level operations — must use admin key
   const cmsAppIds = [
     "cloudsite-data", // Wix Data internal app ID
     "1380b703-ce81-ff05-f115-39571d94dfcd", // Wix Code (Velo)
@@ -375,7 +343,7 @@ export async function enableCms(
         {
           method: "POST",
           headers: {
-            Authorization: accountKey,
+            Authorization: apiKey,
             "wix-account-id": accountId,
             "Content-Type": "application/json",
           },
@@ -390,14 +358,14 @@ export async function enableCms(
     }
   }
 
-  // Also try enabling via the site-level endpoint (uses admin key for install permission)
+  // Also try enabling via the site-level endpoint
   try {
     await fetch(
       `https://www.wixapis.com/apps-installer-service/v1/app-instance/install`,
       {
         method: "POST",
         headers: {
-          Authorization: accountKey,
+          Authorization: apiKey,
           "wix-site-id": siteId,
           "Content-Type": "application/json",
         },
@@ -410,11 +378,23 @@ export async function enableCms(
     // Continue
   }
 
-  // Wait and check with retries (site-level, uses OAuth token)
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await new Promise((r) => setTimeout(r, 5000)); // wait 5s between checks
+  // Wait and check with retries — up to 10 attempts, 10s apart (~100s total)
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await new Promise((r) => setTimeout(r, 10000));
     if (await isCmsActive(apiKey, siteId)) {
       return true;
+    }
+    // Re-attempt app install every 3rd try
+    if (attempt % 3 === 2) {
+      for (const appId of cmsAppIds) {
+        try {
+          await fetch("https://www.wixapis.com/apps/v1/bulk-install", {
+            method: "POST",
+            headers: { Authorization: apiKey, "wix-account-id": accountId, "Content-Type": "application/json" },
+            body: JSON.stringify({ metaSiteIds: [siteId], appId }),
+          });
+        } catch { /* continue */ }
+      }
     }
   }
 
@@ -476,7 +456,7 @@ export async function publishSite(
 const WIX_STORES_API = "https://www.wixapis.com/stores/v1";
 
 /**
- * Creates a single product in the Wix store.
+ * Creates a single product in the Wix store, then adds images via separate endpoint.
  */
 export async function createProduct(
   apiKey: string,
@@ -487,23 +467,43 @@ export async function createProduct(
     productType: string;
     priceData: { price: number; currency: string };
     sku: string;
-    media: { items: Array<{ image: { url: string } }> };
+    imageUrls: string[];
     visible: boolean;
   }
 ): Promise<void> {
-  await withRetry(async () => {
-    await wixFetch(`${WIX_STORES_API}/products`, {
+  // 1. Create product without media
+  const { imageUrls, ...productData } = product;
+  const res = await withRetry(async () => {
+    return await wixFetch(`${WIX_STORES_API}/products`, {
       apiKey,
       siteId,
       method: "POST",
-      body: { product },
+      body: { product: productData },
     });
   }, 2);
+
+  // 2. Add images via separate endpoint if any
+  if (imageUrls.length > 0) {
+    try {
+      const resData = await res.json();
+      const productId = resData.product?.id;
+      if (productId) {
+        const mediaItems = imageUrls.slice(0, 5).map((url) => ({ url }));
+        await wixFetch(`${WIX_STORES_API}/products/${productId}/media`, {
+          apiKey,
+          siteId,
+          method: "POST",
+          body: { media: mediaItems },
+        });
+      }
+    } catch {
+      // Image upload failed but product was created — continue
+    }
+  }
 }
 
 /**
  * Creates multiple products with rate limiting.
- * Returns count of created and failed products.
  */
 export async function createProducts(
   apiKey: string,
@@ -514,7 +514,7 @@ export async function createProducts(
     productType: string;
     priceData: { price: number; currency: string };
     sku: string;
-    media: { items: Array<{ image: { url: string } }> };
+    imageUrls: string[];
     visible: boolean;
   }>
 ): Promise<{ created: number; failed: number }> {
@@ -529,8 +529,7 @@ export async function createProducts(
       console.error(`Failed to create product "${product.name}":`, err instanceof Error ? err.message : err);
       failed++;
     }
-    // 200ms delay between products to respect rate limits
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 300));
   }
 
   return { created, failed };

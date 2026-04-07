@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { supabase } from "@/lib/supabase";
-import { getTemplateId } from "@/lib/templateMap";
-import { installAppOnSite, getOAuthToken } from "@/lib/wixOAuth";
 
 const WIX_API_KEY = process.env.WIX_ADMIN_API_KEY!;
 const WIX_ACCOUNT_ID = process.env.WIX_ACCOUNT_ID!;
-const WIX_MASTER_SITE_ID = process.env.WIX_MASTER_SITE_ID!;
+
+const ALLOWED_TEMPLATES = new Set([
+  "c208eaf8-8ed3-4ad2-947a-db65813006c2",
+  "962b66f7-c9d1-4ba7-be05-354465e71d40",
+  "da927d82-5f52-46a6-bc33-9210fb916aaa",
+]);
 
 export async function POST(request: Request) {
   const token = await getToken({
@@ -20,19 +23,19 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { storeName, email, whatsapp, instagram, city, state, focus,
-      activePromotion, primaryColor, secondaryColor } = body;
+    const { storeName, templateSiteId } = body;
 
     if (!storeName) {
-      return NextResponse.json(
-        { error: "Nome da loja é obrigatório" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Nome da loja é obrigatório" }, { status: 400 });
     }
 
-    // 1. Cria site no Wix com template eCommerce (já vem pronto para editar)
-    const createRes = await fetch(
-      "https://www.wixapis.com/funnel/projects/v1/create",
+    if (!templateSiteId || !ALLOWED_TEMPLATES.has(templateSiteId)) {
+      return NextResponse.json({ error: "Template inválido" }, { status: 400 });
+    }
+
+    // 1. Duplicate
+    const dupRes = await fetch(
+      "https://www.wixapis.com/site-actions/v1/sites/duplicate",
       {
         method: "POST",
         headers: {
@@ -41,103 +44,63 @@ export async function POST(request: Request) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          type: "WIX",
-          templateId: getTemplateId(body.layoutType || "classic"),
+          sourceSiteId: templateSiteId,
+          siteDisplayName: storeName.slice(0, 20),
         }),
       }
     );
 
-    if (!createRes.ok) {
-      const errText = await createRes.text().catch(() => "");
-      console.error("Wix create site error:", createRes.status, errText);
+    if (!dupRes.ok) {
+      const errText = await dupRes.text().catch(() => "");
       return NextResponse.json(
-        { error: `Falha ao criar site no Wix (${createRes.status}): ${errText.slice(0, 200)}` },
+        { error: `Falha ao criar site (${dupRes.status}): ${errText.slice(0, 200)}` },
         { status: 502 }
       );
     }
 
-    const createData = await createRes.json();
-    const metaSiteId = createData.project?.metaSiteId || createData.metaSiteId;
-    const siteId = createData.project?.siteId || metaSiteId;
+    const dupData = await dupRes.json();
+    const metaSiteId = dupData.newSiteId;
 
     if (!metaSiteId) {
-      console.error("Wix create response:", JSON.stringify(createData));
-      return NextResponse.json(
-        { error: "Site criado mas metaSiteId não retornado" },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: "Site criado mas ID não retornado" }, { status: 502 });
     }
 
-    // 2. Aguarda provisionamento
-    await new Promise((r) => setTimeout(r, 5000));
-
-    // 2b. Install our app on the new site to get instanceId for OAuth
-    let instanceId = metaSiteId;
+    // 2. Publish the site NOW
     try {
-      instanceId = await installAppOnSite(metaSiteId);
-    } catch (err) {
-      console.warn("App install failed, using metaSiteId as instanceId:", err);
-    }
+      await fetch("https://www.wixapis.com/site-publisher/v1/site/publish", {
+        method: "POST",
+        headers: {
+          Authorization: WIX_API_KEY,
+          "wix-site-id": metaSiteId,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+    } catch { /* continue */ }
 
-    // 2c. Get OAuth token for per-site operations
-    let siteAuthToken = WIX_API_KEY;
-    try {
-      siteAuthToken = await getOAuthToken(instanceId);
-    } catch (err) {
-      console.warn("OAuth token failed, falling back to admin key:", err);
-    }
+    // 3. Wait for propagation and get public URL
+    await new Promise((r) => setTimeout(r, 8000));
 
-    // 3. Verifica se a Data API funciona no novo site
-    let dataApiReady = false;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const testRes = await fetch(
-          "https://www.wixapis.com/wix-data/v2/collections",
-          {
-            method: "GET",
-            headers: {
-              Authorization: siteAuthToken,
-              "wix-site-id": metaSiteId,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-        if (testRes.ok) {
-          dataApiReady = true;
-          break;
-        }
-      } catch {
-        // retry
-      }
-      await new Promise((r) => setTimeout(r, 3000));
-    }
-
-    if (!dataApiReady) {
-      console.warn("Data API not ready after retries, proceeding anyway");
-    }
-
-    // 4. Busca propriedades do site
     let siteUrl = `https://manage.wix.com/dashboard/${metaSiteId}`;
     try {
-      const propsRes = await fetch(
-        "https://www.wixapis.com/site-properties/v4/properties",
-        {
-          headers: {
-            Authorization: siteAuthToken,
-            "wix-site-id": metaSiteId,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      if (propsRes.ok) {
-        const propsData = await propsRes.json();
-        siteUrl = propsData.properties?.siteUrl || siteUrl;
+      const prodRes = await fetch("https://www.wixapis.com/stores/v1/products/query", {
+        method: "POST",
+        headers: {
+          Authorization: WIX_API_KEY,
+          "wix-site-id": metaSiteId,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: { paging: { limit: 1 } } }),
+      });
+      if (prodRes.ok) {
+        const prodData = await prodRes.json();
+        const base = prodData.products?.[0]?.productPageUrl?.base;
+        if (base) siteUrl = base;
       }
-    } catch {
-      // site pode levar mais tempo
-    }
+    } catch { /* continue */ }
 
-    // 5. Salva a loja no Supabase
+    // 4. Save to Supabase with public URL
+    const dashboardUrl = `https://manage.wix.com/dashboard/${metaSiteId}`;
     const { data: store, error: dbError } = await supabase
       .from("stores")
       .insert({
@@ -146,25 +109,17 @@ export async function POST(request: Request) {
         wix_api_key: WIX_API_KEY,
         wix_site_id: metaSiteId,
         wix_site_url: siteUrl,
-        wix_instance_id: instanceId,
-        owner_email: email || null,
-        whatsapp: whatsapp || null,
-        instagram: instagram || null,
-        city: city || null,
-        state: state || null,
-        focus: focus || "todos",
-        active_promotion: activePromotion || null,
-        primary_color: primaryColor || "#10b981",
-        secondary_color: secondaryColor || "#18181b",
-        connection_method: "oauth",
+        wix_instance_id: metaSiteId,
+        primary_color: "#10b981",
+        secondary_color: "#18181b",
+        connection_method: "auto",
       })
       .select("*")
       .single();
 
     if (dbError) {
-      console.error("Supabase insert error:", dbError);
       return NextResponse.json(
-        { error: `Site criado no Wix mas falha ao salvar: ${dbError.message}` },
+        { error: `Falha ao salvar: ${dbError.message}` },
         { status: 500 }
       );
     }
@@ -172,10 +127,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       storeId: store.id,
       siteId: metaSiteId,
-      metaSiteId,
       siteUrl,
-      dataApiReady,
-      dashboardUrl: `https://manage.wix.com/dashboard/${metaSiteId}`,
+      dashboardUrl,
     });
   } catch (err) {
     console.error("Create site error:", err);

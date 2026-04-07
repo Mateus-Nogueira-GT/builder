@@ -11,10 +11,8 @@ import { Shirt, LayoutDashboard } from 'lucide-react';
 
 const FLOW_STEPS = [
     { label: 'Nome & Cores' },
-    { label: 'Layout' },
     { label: 'Banners' },
     { label: 'Logo' },
-    { label: 'Ativar CMS' },
     { label: 'Publicar' },
 ];
 
@@ -77,7 +75,7 @@ export default function PublishingPage() {
                     <p className="text-zinc-400">Publicando sua loja...</p>
                 </div>
 
-                <StepIndicator steps={FLOW_STEPS} currentStep={5} />
+                <StepIndicator steps={FLOW_STEPS} currentStep={3} />
 
                 <Suspense fallback={<div className="text-center py-12 text-zinc-400">Carregando...</div>}>
                     <PublishingContent />

@@ -99,17 +99,45 @@ export function InjectLog({ jobId, onComplete }: InjectLogProps) {
         </div>
       </div>
 
-      {siteUrl && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-center">
-          <p className="text-sm text-emerald-400 mb-2">Loja publicada com sucesso!</p>
-          <a
-            href={siteUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300 font-medium"
-          >
-            {siteUrl} <ExternalLink className="h-4 w-4" />
-          </a>
+      {done && !error && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-6 text-center space-y-3">
+            <div className="flex justify-center">
+              <CheckCircle className="h-8 w-8 text-emerald-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white">Loja criada com sucesso!</h3>
+            <p className="text-sm text-zinc-400 max-w-md mx-auto">
+              Seus produtos já foram adicionados. Para gerar o link público da sua loja, clique no botão abaixo e publique pelo editor do Wix.
+            </p>
+            {siteUrl && (
+              <a
+                href={siteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-6 py-2.5 text-sm font-bold text-black hover:bg-emerald-400 transition-colors"
+              >
+                Abrir Painel da Loja <ExternalLink className="h-4 w-4" />
+              </a>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4">
+            <h4 className="text-sm font-semibold text-white">Para publicar sua loja:</h4>
+            <div className="space-y-3">
+              <div className="flex gap-3 items-start">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-black">1</div>
+                <p className="text-sm text-zinc-400">Clique em <strong className="text-white">&quot;Abrir Painel da Loja&quot;</strong> acima</p>
+              </div>
+              <div className="flex gap-3 items-start">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-black">2</div>
+                <p className="text-sm text-zinc-400">No painel do Wix, clique em <strong className="text-white">&quot;Editar Site&quot;</strong></p>
+              </div>
+              <div className="flex gap-3 items-start">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-black">3</div>
+                <p className="text-sm text-zinc-400">No editor, clique em <strong className="text-white">&quot;Publicar&quot;</strong> no canto superior direito — isso gera o link público da sua loja</p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
