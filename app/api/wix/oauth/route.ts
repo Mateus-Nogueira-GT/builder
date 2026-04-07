@@ -17,6 +17,8 @@ export async function GET(request: Request) {
   const baseUrl = getPublicBaseUrl(request);
   const redirectUri = `${baseUrl}/api/wix/oauth/callback`;
 
+  console.log("[WIX OAuth] baseUrl:", baseUrl, "| redirectUri:", redirectUri, "| appId:", appId);
+
   // Store user ID and template choice in state param
   const { searchParams } = new URL(request.url);
   const storeName = searchParams.get("storeName") || "";
