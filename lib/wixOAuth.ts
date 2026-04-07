@@ -9,8 +9,8 @@
 
 const WIX_OAUTH_URL = "https://www.wixapis.com/oauth2/token";
 
-const CLIENT_ID = process.env.WIX_CLIENT_ID!;
-const CLIENT_SECRET = process.env.WIX_CLIENT_SECRET!;
+const CLIENT_ID = process.env.WIX_OAUTH_APP_ID!;
+const CLIENT_SECRET = process.env.WIX_OAUTH_APP_SECRET!;
 
 interface CachedToken {
   accessToken: string;

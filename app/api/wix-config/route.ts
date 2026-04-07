@@ -5,8 +5,8 @@ import { NextResponse } from "next/server";
  * No longer exposes API keys — auth is handled server-side via OAuth.
  */
 export async function GET() {
-  const clientId = process.env.WIX_CLIENT_ID;
-  const hasSecret = !!process.env.WIX_CLIENT_SECRET;
+  const clientId = process.env.WIX_OAUTH_APP_ID;
+  const hasSecret = !!process.env.WIX_OAUTH_APP_SECRET;
   const hasAdminKey = !!process.env.WIX_ADMIN_API_KEY;
 
   return NextResponse.json({
