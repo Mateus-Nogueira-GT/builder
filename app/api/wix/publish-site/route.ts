@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getOAuthToken } from "@/lib/wixOAuth";
 
 export async function POST(request: Request) {
   try {
@@ -9,18 +10,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "siteId required" }, { status: 400 });
     }
 
-    // Get the user's OAuth token from the store record
+    // Get the store's instanceId to fetch a fresh token
     const { data: store } = await supabase
       .from("stores")
-      .select("wix_api_key")
+      .select("wix_instance_id")
       .eq("id", storeId)
       .single();
 
-    if (!store?.wix_api_key) {
-      return NextResponse.json({ error: "Token não encontrado" }, { status: 400 });
+    if (!store?.wix_instance_id) {
+      return NextResponse.json({ error: "Conexão Wix não encontrada" }, { status: 400 });
     }
 
-    const authToken = store.wix_api_key;
+    const authToken = await getOAuthToken(store.wix_instance_id);
 
     // 1. Publish
     await fetch("https://www.wixapis.com/site-publisher/v1/site/publish", {

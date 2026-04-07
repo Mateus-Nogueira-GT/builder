@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { supabase } from "@/lib/supabase";
+import { getOAuthToken } from "@/lib/wixOAuth";
 
 const ALLOWED_TEMPLATES = new Set([
   "c208eaf8-8ed3-4ad2-947a-db65813006c2",
@@ -30,51 +31,52 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Template inválido" }, { status: 400 });
     }
 
-    // Get the user's OAuth token from the pending store record
-    let userAccessToken = "";
+    // Find the user's store with OAuth token
     let storeId = pendingStoreId;
+    let instanceId = "";
 
     if (pendingStoreId) {
       const { data: store } = await supabase
         .from("stores")
-        .select("wix_api_key")
+        .select("wix_instance_id")
         .eq("id", pendingStoreId)
         .eq("owner_id", token.id)
         .single();
-
-      userAccessToken = store?.wix_api_key || "";
+      instanceId = store?.wix_instance_id || "";
     }
 
-    if (!userAccessToken) {
-      // Fallback: find the most recent pending store for this user
+    if (!instanceId) {
       const { data: store } = await supabase
         .from("stores")
-        .select("id, wix_api_key")
+        .select("id, wix_instance_id")
         .eq("owner_id", token.id)
-        .eq("wix_site_id", "pending")
         .eq("connection_method", "oauth")
+        .neq("wix_instance_id", "")
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
 
-      if (!store?.wix_api_key) {
+      if (!store?.wix_instance_id) {
         return NextResponse.json(
-          { error: "Token OAuth não encontrado. Conecte com o Wix primeiro." },
+          { error: "Conexão Wix não encontrada. Instale o app primeiro." },
           { status: 400 }
         );
       }
 
-      userAccessToken = store.wix_api_key;
+      instanceId = store.wix_instance_id;
       storeId = store.id;
     }
 
-    // 1. Duplicate template using the USER's OAuth token
+    // Get a fresh access token using client_credentials
+    const accessToken = await getOAuthToken(instanceId);
+
+    // 1. Duplicate template using the user's token
     const dupRes = await fetch(
       "https://www.wixapis.com/site-actions/v1/sites/duplicate",
       {
         method: "POST",
         headers: {
-          Authorization: userAccessToken,
+          Authorization: accessToken,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -100,12 +102,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Site criado mas ID não retornado" }, { status: 502 });
     }
 
-    // 2. Publish the site using the user's token
+    // 2. Publish the site
     try {
       await fetch("https://www.wixapis.com/site-publisher/v1/site/publish", {
         method: "POST",
         headers: {
-          Authorization: userAccessToken,
+          Authorization: accessToken,
           "wix-site-id": metaSiteId,
           "Content-Type": "application/json",
         },
@@ -121,7 +123,7 @@ export async function POST(request: Request) {
       const prodRes = await fetch("https://www.wixapis.com/stores/v1/products/query", {
         method: "POST",
         headers: {
-          Authorization: userAccessToken,
+          Authorization: accessToken,
           "wix-site-id": metaSiteId,
           "Content-Type": "application/json",
         },
@@ -134,25 +136,18 @@ export async function POST(request: Request) {
       }
     } catch { /* continue */ }
 
-    // 4. Update the existing store record with real site data
+    // 4. Update the store record
     const dashboardUrl = `https://manage.wix.com/dashboard/${metaSiteId}`;
-    const { error: dbError } = await supabase
+    await supabase
       .from("stores")
       .update({
         name: storeName,
         wix_site_id: metaSiteId,
         wix_site_url: siteUrl,
-        wix_instance_id: metaSiteId,
+        wix_instance_id: instanceId,
         template_ready: true,
       })
       .eq("id", storeId);
-
-    if (dbError) {
-      return NextResponse.json(
-        { error: `Falha ao salvar: ${dbError.message}` },
-        { status: 500 }
-      );
-    }
 
     return NextResponse.json({
       storeId,

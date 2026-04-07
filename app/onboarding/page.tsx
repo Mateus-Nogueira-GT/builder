@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { toast } from "sonner";
@@ -9,7 +9,9 @@ import { TemplateSelector, type TemplateOption } from "@/components/TemplateSele
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Shirt, ArrowRight, ArrowLeft, Store, LayoutTemplate, LinkIcon } from "lucide-react";
+import { Shirt, ArrowRight, ArrowLeft, Store, LayoutTemplate, LinkIcon, Loader2 } from "lucide-react";
+
+const WIX_APP_ID = process.env.NEXT_PUBLIC_WIX_APP_ID || "";
 
 const FLOW_STEPS = [
   { label: "Nome da Loja" },
@@ -17,7 +19,7 @@ const FLOW_STEPS = [
   { label: "Conectar Wix" },
 ];
 
-type PageState = "form" | "creating" | "publishing";
+type PageState = "form" | "waiting" | "creating" | "publishing";
 
 function OnboardingContent() {
   const searchParams = useSearchParams();
@@ -30,30 +32,8 @@ function OnboardingContent() {
   const [countdown, setCountdown] = useState(90);
   const [publicUrl, setPublicUrl] = useState("");
   const [wixConnected, setWixConnected] = useState(false);
-  const [connecting, setConnecting] = useState(false);
   const [pendingStoreId, setPendingStoreId] = useState("");
-
-  // Check if returning from Wix OAuth
-  useEffect(() => {
-    const connected = searchParams.get("wix_connected");
-    const name = searchParams.get("storeName");
-    const storeId = searchParams.get("pendingStoreId");
-    const error = searchParams.get("error");
-
-    if (error) {
-      toast.error("Erro ao conectar com Wix. Tente novamente.");
-      setStep(2);
-      return;
-    }
-
-    if (connected === "true") {
-      setWixConnected(true);
-      if (name) setStoreName(name);
-      if (storeId) setPendingStoreId(storeId);
-      setStep(2);
-      toast.success("Wix conectado com sucesso!");
-    }
-  }, [searchParams]);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   // Countdown timer
   useEffect(() => {
@@ -86,25 +66,37 @@ function OnboardingContent() {
     }
   }, [countdown, pageState, publicUrl, siteId]);
 
-  const handleConnectWix = async () => {
-    if (!storeName || !selectedTemplate) return;
-    setConnecting(true);
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
 
-    try {
-      const res = await fetch(
-        `/api/wix/oauth?storeName=${encodeURIComponent(storeName)}&templateSiteId=${encodeURIComponent(selectedTemplate.siteId)}`
-      );
-      const data = await res.json();
-      if (data.authUrl) {
-        window.location.href = data.authUrl;
-      } else {
-        toast.error("Erro ao gerar link de conexão");
-        setConnecting(false);
-      }
-    } catch {
-      toast.error("Erro ao conectar com Wix");
-      setConnecting(false);
-    }
+  const handleConnectWix = () => {
+    if (!storeName || !selectedTemplate) return;
+
+    // Open Wix app installation in a new tab
+    const installUrl = `https://www.wix.com/installer/install?appId=${WIX_APP_ID}`;
+    window.open(installUrl, "_blank");
+
+    // Start polling for connection
+    setPageState("waiting");
+    toast.info("Instale o app na sua conta Wix. Aguardando conexão...");
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch("/api/wix/connection-status");
+        const data = await res.json();
+        if (data.connected) {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          setWixConnected(true);
+          setPendingStoreId(data.storeId);
+          setPageState("form");
+          toast.success("Wix conectado com sucesso!");
+        }
+      } catch { /* retry */ }
+    }, 3000);
   };
 
   const handleCreateStore = async () => {
@@ -139,6 +131,36 @@ function OnboardingContent() {
       setPageState("form");
     }
   };
+
+  // Waiting for Wix connection screen
+  if (pageState === "waiting") {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center px-4">
+        <div className="text-center space-y-6 max-w-md">
+          <div className="relative mx-auto h-20 w-20">
+            <div className="absolute inset-0 rounded-full border-4 border-zinc-800" />
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#0C6EFC] animate-spin" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-white">Aguardando conexão com Wix</h2>
+            <p className="text-zinc-400 text-sm">
+              Instale o app na aba que abriu e volte aqui. A conexão será detectada automaticamente.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (pollingRef.current) clearInterval(pollingRef.current);
+              setPageState("form");
+            }}
+            className="border-zinc-700 text-zinc-300"
+          >
+            Cancelar
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   // Creating screen
   if (pageState === "creating") {
@@ -280,14 +302,13 @@ function OnboardingContent() {
               ) : (
                 <div className="space-y-4">
                   <p className="text-sm text-zinc-400">
-                    Para publicar sua loja, precisamos conectar com sua conta Wix. Você será redirecionado para autorizar o acesso.
+                    Para criar sua loja, precisamos conectar com sua conta Wix. Clique abaixo para instalar o app na sua conta.
                   </p>
                   <Button
                     onClick={handleConnectWix}
-                    disabled={connecting}
                     className="w-full bg-[#0C6EFC] text-white font-bold hover:bg-[#0B5ED8]"
                   >
-                    {connecting ? "Redirecionando..." : "Conectar com Wix"}
+                    Conectar com Wix
                   </Button>
                 </div>
               )}
