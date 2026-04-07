@@ -9,78 +9,51 @@ import { TemplateSelector, type TemplateOption } from "@/components/TemplateSele
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Shirt, ArrowRight, ArrowLeft, Store, LayoutTemplate } from "lucide-react";
+import { Shirt, ArrowRight, ArrowLeft, Store, LayoutTemplate, Loader2 } from "lucide-react";
 
 const FLOW_STEPS = [
   { label: "Nome da Loja" },
   { label: "Template" },
 ];
 
-type PageState = "form" | "creating";
-
 function OnboardingContent() {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [pageState, setPageState] = useState<PageState>("form");
+  const [submitting, setSubmitting] = useState(false);
   const [storeName, setStoreName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateOption | null>(null);
 
-  const handleCreateStore = async () => {
+  const handleSubmit = async () => {
     if (!storeName || !selectedTemplate) return;
-    setPageState("creating");
+    setSubmitting(true);
 
     try {
-      const res = await fetch("/api/wix/create-site", {
+      const res = await fetch("/api/stores", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          storeName,
-          templateSiteId: selectedTemplate.siteId,
+          name: storeName,
+          templateId: selectedTemplate.id,
+          status: "pending",
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error || "Erro ao criar site");
-        setPageState("form");
+        toast.error(data.error || "Erro ao registrar loja");
+        setSubmitting(false);
         return;
       }
 
-      // Redirect to success page
-      const params = new URLSearchParams({
-        name: storeName,
-        dashboard: data.dashboardUrl,
-        storeId: data.storeId,
-        siteId: data.siteId,
-      });
+      const params = new URLSearchParams({ name: storeName });
       router.push(`/onboarding/success?${params.toString()}`);
     } catch (err) {
       console.error("[ONBOARDING] error:", err);
-      toast.error("Erro ao criar site");
-      setPageState("form");
+      toast.error("Erro ao registrar loja");
+      setSubmitting(false);
     }
   };
 
-  // Creating screen
-  if (pageState === "creating") {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center px-4">
-        <div className="text-center space-y-6">
-          <div className="relative mx-auto h-20 w-20">
-            <div className="absolute inset-0 rounded-full border-4 border-zinc-800" />
-            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin" />
-            <div className="absolute inset-3 rounded-full border-4 border-transparent border-t-emerald-400/50 animate-spin" style={{ animationDirection: "reverse", animationDuration: "1.5s" }} />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-bold text-white">Criando sua loja...</h2>
-            <p className="text-zinc-400 text-sm">Aguarde alguns segundos.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Form
   return (
     <div className="min-h-screen bg-zinc-950 px-4 py-8">
       <div className="mx-auto max-w-2xl space-y-8">
@@ -121,7 +94,7 @@ function OnboardingContent() {
           </Card>
         )}
 
-        {/* Step 1: Template + Create */}
+        {/* Step 1: Template + Submit */}
         {step === 1 && (
           <Card className="border-zinc-800 bg-zinc-900">
             <CardHeader>
@@ -140,11 +113,17 @@ function OnboardingContent() {
                   <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
                 </Button>
                 <Button
-                  onClick={handleCreateStore}
-                  disabled={!selectedTemplate}
+                  onClick={handleSubmit}
+                  disabled={!selectedTemplate || submitting}
                   className="bg-emerald-500 text-black font-bold hover:bg-emerald-400"
                 >
-                  Criar Minha Loja <ArrowRight className="ml-2 h-4 w-4" />
+                  {submitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Registrando...
+                    </>
+                  ) : (
+                    "Finalizar Cadastro"
+                  )}
                 </Button>
               </div>
             </CardContent>
