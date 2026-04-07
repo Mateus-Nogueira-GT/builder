@@ -77,6 +77,7 @@ function OnboardingContent() {
     if (!storeName || !selectedTemplate) return;
 
     // Create a pending store so the webhook can find it
+    let createdStoreId = pendingStoreId;
     try {
       const res = await fetch("/api/stores", {
         method: "POST",
@@ -84,7 +85,10 @@ function OnboardingContent() {
         body: JSON.stringify({ name: storeName, siteId: "pending", connectionMethod: "oauth" }),
       });
       const data = await res.json();
-      if (data.id) setPendingStoreId(data.id);
+      if (data.id) {
+        createdStoreId = data.id;
+        setPendingStoreId(data.id);
+      }
     } catch { /* continue */ }
 
     // Open Wix app installation in a new tab
@@ -97,7 +101,7 @@ function OnboardingContent() {
 
     pollingRef.current = setInterval(async () => {
       try {
-        const res = await fetch("/api/wix/connection-status");
+        const res = await fetch(`/api/wix/connection-status?storeId=${createdStoreId}`);
         const data = await res.json();
         if (data.connected) {
           if (pollingRef.current) clearInterval(pollingRef.current);

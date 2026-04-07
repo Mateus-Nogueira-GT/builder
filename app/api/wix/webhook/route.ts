@@ -69,12 +69,12 @@ export async function POST(request: Request) {
       .single();
 
     if (pendingStore) {
+      const updateData: Record<string, string> = { wix_instance_id: instanceId };
+      if (accessToken) updateData.wix_api_key = accessToken;
+
       await supabase
         .from("stores")
-        .update({
-          wix_instance_id: instanceId,
-          wix_api_key: accessToken || undefined,
-        })
+        .update(updateData)
         .eq("id", pendingStore.id);
 
       console.log(`[Wix Webhook] Updated store ${pendingStore.id} with instanceId=${instanceId}`);
