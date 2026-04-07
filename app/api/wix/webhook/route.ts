@@ -2,37 +2,87 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getOAuthToken } from "@/lib/wixOAuth";
 
+const CORS_HEADERS = {
+  "Cross-Origin-Opener-Policy": "unsafe-none",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+function ok(data: Record<string, unknown> = {}) {
+  return NextResponse.json({ received: true, ...data }, { headers: CORS_HEADERS });
+}
+
+/** OPTIONS — CORS preflight */
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
 /**
- * Wix Webhook Handler
- * Receives OAUTH_CREATED event when a user installs the app.
- * Extracts instanceId, gets an access token, and saves to Supabase.
+ * GET — Wix redirects here after app installation (installer redirect).
+ * Also used by Wix to verify the URL is reachable.
+ */
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const instanceId = searchParams.get("instanceId");
+
+  console.log("[Wix Webhook GET] instanceId:", instanceId, "params:", searchParams.toString());
+
+  // If no instanceId, this is a verification ping — just return 200
+  if (!instanceId) {
+    return ok();
+  }
+
+  // Process the installation redirect
+  try {
+    const accessToken = await getOAuthToken(instanceId);
+    await updatePendingStore(instanceId, accessToken);
+  } catch (err) {
+    console.error("[Wix Webhook GET] Error processing:", err);
+  }
+
+  // Return a page that auto-closes (user should go back to original tab)
+  return new NextResponse(
+    `<!DOCTYPE html>
+<html><head><title>Kit Store Builder</title>
+<style>body{background:#09090b;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.box{text-align:center;max-width:400px}.ok{color:#10b981;font-size:2rem;margin-bottom:1rem}</style></head>
+<body><div class="box"><div class="ok">✓</div><p>App conectado! Pode fechar esta aba.</p></div>
+<script>setTimeout(()=>window.close(),2000)</script></body></html>`,
+    { headers: { "Content-Type": "text/html", ...CORS_HEADERS } }
+  );
+}
+
+/**
+ * POST — Wix webhook events (AppInstalled, etc.)
  */
 export async function POST(request: Request) {
   try {
     const body = await request.text();
-    console.log("[Wix Webhook] Raw body:", body);
+    console.log("[Wix Webhook POST] Raw body:", body.slice(0, 500));
 
-    let data: Record<string, unknown>;
+    let data: Record<string, unknown> = {};
     try {
       data = JSON.parse(body);
     } catch {
-      // Wix sends JWT-encoded webhooks
+      // Wix may send JWT-encoded webhooks
       const parts = body.split(".");
       if (parts.length === 3) {
-        const payload = JSON.parse(
-          Buffer.from(parts[1], "base64").toString()
-        );
-        data = typeof payload.data === "string" ? JSON.parse(payload.data) : payload;
-        // Also check top-level JWT fields
-        if (payload.instanceId) data.instanceId = payload.instanceId;
-        console.log("[Wix Webhook] Decoded JWT payload:", JSON.stringify(data));
+        try {
+          const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
+          data = typeof payload.data === "string" ? JSON.parse(payload.data) : payload;
+          if (payload.instanceId) data.instanceId = payload.instanceId;
+        } catch (jwtErr) {
+          console.error("[Wix Webhook POST] JWT decode failed:", jwtErr);
+          return ok();
+        }
       } else {
-        console.error("[Wix Webhook] Cannot parse body");
-        return NextResponse.json({ received: true });
+        console.warn("[Wix Webhook POST] Unrecognized body format");
+        return ok();
       }
     }
 
-    // Extract instanceId from various possible formats
+    // Extract instanceId from various possible locations
     const instanceId =
       (data.instanceId as string) ??
       (data.instance_id as string) ??
@@ -40,62 +90,54 @@ export async function POST(request: Request) {
       ((data.payload as Record<string, unknown>)?.instanceId as string) ??
       null;
 
-    console.log("[Wix Webhook] Extracted instanceId:", instanceId);
+    console.log("[Wix Webhook POST] instanceId:", instanceId, "eventType:", data.eventType || "unknown");
 
     if (!instanceId) {
-      console.warn("[Wix Webhook] No instanceId found in payload");
-      return NextResponse.json({ received: true });
+      return ok({ note: "no instanceId" });
     }
 
-    // Get an access token using client_credentials
-    let accessToken = "";
+    // Get access token and update store
     try {
-      accessToken = await getOAuthToken(instanceId);
-      console.log("[Wix Webhook] Got access token for instanceId:", instanceId);
+      const accessToken = await getOAuthToken(instanceId);
+      await updatePendingStore(instanceId, accessToken);
     } catch (err) {
-      console.error("[Wix Webhook] Failed to get token:", err);
+      console.error("[Wix Webhook POST] Failed to process:", err);
     }
 
-    // Save instanceId and token to the pending store
-    // Find the most recent pending store that doesn't have an instanceId yet
-    const { data: pendingStore } = await supabase
-      .from("stores")
-      .select("id")
-      .eq("wix_site_id", "pending")
-      .eq("connection_method", "oauth")
-      .or("wix_instance_id.is.null,wix_instance_id.eq.")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    if (pendingStore) {
-      const updateData: Record<string, string> = { wix_instance_id: instanceId };
-      if (accessToken) updateData.wix_api_key = accessToken;
-
-      await supabase
-        .from("stores")
-        .update(updateData)
-        .eq("id", pendingStore.id);
-
-      console.log(`[Wix Webhook] Updated store ${pendingStore.id} with instanceId=${instanceId}`);
-    } else {
-      // No pending store — create a new record
-      await supabase.from("stores").insert({
-        name: "Nova Loja",
-        wix_instance_id: instanceId,
-        wix_api_key: accessToken,
-        wix_site_id: "pending",
-        wix_site_url: "",
-        connection_method: "oauth",
-        primary_color: "#10b981",
-        secondary_color: "#18181b",
-      });
-      console.log(`[Wix Webhook] Created new store with instanceId=${instanceId}`);
-    }
-
-    return NextResponse.json({ received: true, instanceId });
+    return ok({ instanceId });
   } catch (err) {
-    console.error("[Wix Webhook] Error:", err);
-    return NextResponse.json({ received: true });
+    console.error("[Wix Webhook POST] Unhandled error:", err);
+    return ok();
+  }
+}
+
+async function updatePendingStore(instanceId: string, accessToken: string) {
+  const { data: pendingStore } = await supabase
+    .from("stores")
+    .select("id")
+    .eq("wix_site_id", "pending")
+    .eq("connection_method", "oauth")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (pendingStore) {
+    await supabase
+      .from("stores")
+      .update({ wix_instance_id: instanceId, wix_api_key: accessToken })
+      .eq("id", pendingStore.id);
+    console.log(`[Wix Webhook] Updated store ${pendingStore.id} with instanceId=${instanceId}`);
+  } else {
+    await supabase.from("stores").insert({
+      name: "Nova Loja",
+      wix_instance_id: instanceId,
+      wix_api_key: accessToken,
+      wix_site_id: "pending",
+      wix_site_url: "",
+      connection_method: "oauth",
+      primary_color: "#10b981",
+      secondary_color: "#18181b",
+    });
+    console.log(`[Wix Webhook] Created new store with instanceId=${instanceId}`);
   }
 }

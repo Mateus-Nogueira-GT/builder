@@ -147,7 +147,7 @@ function OnboardingContent() {
     }
 
     // 1. Open Wix installer FIRST (must be synchronous to avoid popup blocker)
-    const redirectUrl = `${window.location.origin}/api/wix/oauth/callback`;
+    const redirectUrl = `${window.location.origin}/api/wix/webhook`;
     const installUrl = `https://www.wix.com/installer/install?appId=${wixAppId}&redirectUrl=${encodeURIComponent(redirectUrl)}`;
     window.open(installUrl, "_blank");
 
