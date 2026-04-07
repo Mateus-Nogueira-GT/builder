@@ -73,8 +73,19 @@ function OnboardingContent() {
     };
   }, []);
 
-  const handleConnectWix = () => {
+  const handleConnectWix = async () => {
     if (!storeName || !selectedTemplate) return;
+
+    // Create a pending store so the webhook can find it
+    try {
+      const res = await fetch("/api/stores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: storeName, siteId: "pending", connectionMethod: "oauth" }),
+      });
+      const data = await res.json();
+      if (data.id) setPendingStoreId(data.id);
+    } catch { /* continue */ }
 
     // Open Wix app installation in a new tab
     const installUrl = `https://www.wix.com/installer/install?appId=${WIX_APP_ID}`;
@@ -82,7 +93,7 @@ function OnboardingContent() {
 
     // Start polling for connection
     setPageState("waiting");
-    toast.info("Instale o app na sua conta Wix. Aguardando conexão...");
+    toast.info("Autorize o app no Wix. Aguardando conexão...");
 
     pollingRef.current = setInterval(async () => {
       try {

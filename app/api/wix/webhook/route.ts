@@ -62,6 +62,8 @@ export async function POST(request: Request) {
       .from("stores")
       .select("id")
       .eq("wix_site_id", "pending")
+      .eq("connection_method", "oauth")
+      .or("wix_instance_id.is.null,wix_instance_id.eq.")
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
