@@ -92,8 +92,32 @@ function OnboardingContent() {
           if (pollingRef.current) clearInterval(pollingRef.current);
           setWixConnected(true);
           setPendingStoreId(data.storeId);
-          setPageState("form");
-          toast.success("Wix conectado com sucesso!");
+          // Auto-create store immediately after OAuth
+          setPageState("creating");
+          try {
+            const createRes = await fetch("/api/wix/create-site", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                storeName,
+                templateSiteId: selectedTemplate!.siteId,
+                pendingStoreId: data.storeId,
+              }),
+            });
+            const createData = await createRes.json();
+            if (!createRes.ok) {
+              toast.error(createData.error || "Erro ao criar site");
+              setPageState("form");
+              setStep(2);
+              return;
+            }
+            // Redirect to Wix dashboard
+            window.location.href = `https://manage.wix.com/dashboard/${createData.siteId}`;
+          } catch {
+            toast.error("Erro ao criar site");
+            setPageState("form");
+            setStep(2);
+          }
         }
       } catch { /* retry */ }
     }, 3000);
@@ -289,29 +313,17 @@ function OnboardingContent() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              {wixConnected ? (
-                <div className="space-y-4">
-                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 text-center">
-                    <p className="text-sm text-emerald-400 font-medium">Wix conectado com sucesso!</p>
-                    <p className="text-xs text-zinc-400 mt-1">Sua loja será criada na sua conta Wix.</p>
-                  </div>
-                  <Button onClick={handleCreateStore} className="w-full bg-emerald-500 text-black font-bold hover:bg-emerald-400">
-                    Criar Minha Loja <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-sm text-zinc-400">
-                    Para criar sua loja, precisamos conectar com sua conta Wix. Clique abaixo para instalar o app na sua conta.
-                  </p>
-                  <Button
-                    onClick={handleConnectWix}
-                    className="w-full bg-[#0C6EFC] text-white font-bold hover:bg-[#0B5ED8]"
-                  >
-                    Conectar com Wix
-                  </Button>
-                </div>
-              )}
+              <div className="space-y-4">
+                <p className="text-sm text-zinc-400">
+                  Para criar sua loja, precisamos conectar com sua conta Wix. Clique abaixo para autorizar o acesso.
+                </p>
+                <Button
+                  onClick={handleConnectWix}
+                  className="w-full bg-[#0C6EFC] text-white font-bold hover:bg-[#0B5ED8]"
+                >
+                  Conectar com Wix
+                </Button>
+              </div>
               <div className="flex justify-start">
                 <Button variant="outline" onClick={() => setStep(1)} className="border-zinc-700 text-zinc-300">
                   <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
