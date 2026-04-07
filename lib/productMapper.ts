@@ -3,10 +3,10 @@ import type { CatalogProduct } from "./externalCatalog";
 export interface WixProduct {
   name: string;
   description: string;
-  productType: "physical";
+  productType: string;
   priceData: { price: number; currency: string };
   sku: string;
-  imageUrls: string[];
+  media: { items: Array<{ image: { url: string } }> };
   visible: boolean;
 }
 
@@ -25,7 +25,7 @@ export function mapToWixProduct(product: CatalogProduct): WixProduct {
     productType: "physical",
     priceData: { price, currency: "BRL" },
     sku: product.sku || "",
-    imageUrls,
+    media: { items: imageUrls.map((url) => ({ image: { url } })) },
     visible: product.is_published ?? true,
   };
 }
