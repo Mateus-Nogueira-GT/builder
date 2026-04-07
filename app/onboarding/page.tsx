@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { toast } from "sonner";
@@ -17,7 +17,7 @@ const FLOW_STEPS = [
   { label: "Conectar Wix" },
 ];
 
-type PageState = "form" | "creating" | "publishing";
+type PageState = "form" | "waiting" | "creating" | "publishing";
 
 function OnboardingContent() {
   const searchParams = useSearchParams();
@@ -29,11 +29,10 @@ function OnboardingContent() {
   const [siteId, setSiteId] = useState("");
   const [countdown, setCountdown] = useState(90);
   const [publicUrl, setPublicUrl] = useState("");
-  const [wixConnected, setWixConnected] = useState(false);
-  const [connecting, setConnecting] = useState(false);
   const [pendingStoreId, setPendingStoreId] = useState("");
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Check if returning from Wix OAuth
+  // Check if returning from Wix OAuth (fallback for redirect-based flow)
   useEffect(() => {
     const connected = searchParams.get("wix_connected");
     const name = searchParams.get("storeName");
@@ -48,7 +47,6 @@ function OnboardingContent() {
     }
 
     if (connected === "true") {
-      setWixConnected(true);
       if (name) setStoreName(name);
       if (pending) setPendingStoreId(pending);
       if (template) {
@@ -56,8 +54,10 @@ function OnboardingContent() {
         if (found) setSelectedTemplate(found);
       }
       setStep(2);
-      toast.success("Wix conectado com sucesso!");
+      // Auto-create site since OAuth already connected
+      handleAutoCreate(name || "", template || "", pending || "");
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   // Countdown timer
@@ -91,59 +91,152 @@ function OnboardingContent() {
     }
   }, [countdown, pageState, publicUrl, siteId]);
 
-  const handleConnectWix = async () => {
-    if (!storeName || !selectedTemplate) return;
-    setConnecting(true);
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
 
-    try {
-      const res = await fetch(
-        `/api/wix/oauth?storeName=${encodeURIComponent(storeName)}&templateSiteId=${encodeURIComponent(selectedTemplate.siteId)}`
-      );
-      const data = await res.json();
-      if (data.authUrl) {
-        window.location.href = data.authUrl;
-      } else {
-        toast.error("Erro ao gerar link de conexão");
-        setConnecting(false);
-      }
-    } catch {
-      toast.error("Erro ao conectar com Wix");
-      setConnecting(false);
-    }
-  };
+  // Auto-create store after OAuth redirect return
+  const handleAutoCreate = async (name: string, templateId: string, pending: string) => {
+    const tpl = TEMPLATES.find((t) => t.siteId === templateId);
+    if (!name || !tpl) return;
 
-  const handleCreateStore = async () => {
-    if (!storeName || !selectedTemplate) return;
     setPageState("creating");
-
     try {
       const res = await fetch("/api/wix/create-site", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          storeName,
-          templateSiteId: selectedTemplate.siteId,
-          pendingStoreId,
+          storeName: name,
+          templateSiteId: tpl.siteId,
+          pendingStoreId: pending,
         }),
       });
-
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || "Erro ao criar site");
         setPageState("form");
+        setStep(2);
         return;
       }
-
-      setStoreId(data.storeId);
-      setSiteId(data.siteId);
-      setCountdown(90);
-      setPageState("publishing");
-    } catch (err) {
-      console.error("[ONBOARDING] error:", err);
+      window.location.href = `https://manage.wix.com/dashboard/${data.siteId}`;
+    } catch {
       toast.error("Erro ao criar site");
       setPageState("form");
+      setStep(2);
     }
   };
+
+  const handleConnectWix = async () => {
+    if (!storeName || !selectedTemplate) return;
+
+    // 1. Get app ID from server
+    let appId = "";
+    try {
+      const configRes = await fetch("/api/wix-config");
+      const config = await configRes.json();
+      appId = config.clientId;
+    } catch {
+      toast.error("Erro ao obter configuração do Wix");
+      return;
+    }
+
+    if (!appId) {
+      toast.error("Wix App ID não configurado");
+      return;
+    }
+
+    // 2. Open Wix installer in new tab (must be in direct click handler to avoid popup blocker)
+    const installUrl = `https://www.wix.com/installer/install?appId=${appId}`;
+    window.open(installUrl, "_blank");
+
+    // 3. Create a pending store so the webhook can find it
+    let createdStoreId = pendingStoreId;
+    try {
+      const res = await fetch("/api/stores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: storeName, siteId: "pending", connectionMethod: "oauth" }),
+      });
+      const data = await res.json();
+      if (data.id) {
+        createdStoreId = data.id;
+        setPendingStoreId(data.id);
+      }
+    } catch { /* continue */ }
+
+    // 4. Start polling for connection (webhook will update the pending store)
+    setPageState("waiting");
+    toast.info("Autorize o app no Wix. Aguardando conexão...");
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/wix/connection-status?storeId=${createdStoreId}`);
+        const data = await res.json();
+        if (data.connected) {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          // Auto-create store immediately after connection
+          setPageState("creating");
+          try {
+            const createRes = await fetch("/api/wix/create-site", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                storeName,
+                templateSiteId: selectedTemplate!.siteId,
+                pendingStoreId: data.storeId,
+              }),
+            });
+            const createData = await createRes.json();
+            if (!createRes.ok) {
+              toast.error(createData.error || "Erro ao criar site");
+              setPageState("form");
+              setStep(2);
+              return;
+            }
+            // Redirect to Wix dashboard
+            window.location.href = `https://manage.wix.com/dashboard/${createData.siteId}`;
+          } catch {
+            toast.error("Erro ao criar site");
+            setPageState("form");
+            setStep(2);
+          }
+        }
+      } catch { /* retry */ }
+    }, 3000);
+  };
+
+  // Waiting for Wix connection screen
+  if (pageState === "waiting") {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center px-4">
+        <div className="text-center space-y-6 max-w-md">
+          <div className="relative mx-auto h-20 w-20">
+            <div className="absolute inset-0 rounded-full border-4 border-zinc-800" />
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#0C6EFC] animate-spin" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-white">Aguardando conexão com Wix</h2>
+            <p className="text-zinc-400 text-sm">
+              Instale o app na aba que abriu e volte aqui. A conexão será detectada automaticamente.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (pollingRef.current) clearInterval(pollingRef.current);
+              setPageState("form");
+            }}
+            className="border-zinc-700 text-zinc-300"
+          >
+            Cancelar
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   // Creating screen
   if (pageState === "creating") {
@@ -272,34 +365,17 @@ function OnboardingContent() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              {wixConnected ? (
-                <div className="space-y-4">
-                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 text-center">
-                    <p className="text-sm text-emerald-400 font-medium">Wix conectado com sucesso!</p>
-                    <p className="text-xs text-zinc-400 mt-1">Sua loja será criada na sua conta Wix.</p>
-                  </div>
-                  <Button onClick={handleCreateStore} className="w-full bg-emerald-500 text-black font-bold hover:bg-emerald-400">
-                    Criar Minha Loja <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-sm text-zinc-400">
-                    Para criar sua loja, precisamos conectar com sua conta Wix. Clique abaixo para autorizar o acesso.
-                  </p>
-                  <Button
-                    onClick={handleConnectWix}
-                    disabled={connecting}
-                    className="w-full bg-[#0C6EFC] text-white font-bold hover:bg-[#0B5ED8]"
-                  >
-                    {connecting ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Redirecionando...</>
-                    ) : (
-                      "Conectar com Wix"
-                    )}
-                  </Button>
-                </div>
-              )}
+              <div className="space-y-4">
+                <p className="text-sm text-zinc-400">
+                  Para criar sua loja, precisamos conectar com sua conta Wix. Clique abaixo para autorizar o acesso.
+                </p>
+                <Button
+                  onClick={handleConnectWix}
+                  className="w-full bg-[#0C6EFC] text-white font-bold hover:bg-[#0B5ED8]"
+                >
+                  Conectar com Wix
+                </Button>
+              </div>
               <div className="flex justify-start">
                 <Button variant="outline" onClick={() => setStep(1)} className="border-zinc-700 text-zinc-300">
                   <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
