@@ -30,7 +30,16 @@ function OnboardingContent() {
   const [countdown, setCountdown] = useState(90);
   const [publicUrl, setPublicUrl] = useState("");
   const [pendingStoreId, setPendingStoreId] = useState("");
+  const [wixAppId, setWixAppId] = useState("");
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Prefetch Wix app ID on mount (needed synchronously for popup)
+  useEffect(() => {
+    fetch("/api/wix-config")
+      .then((r) => r.json())
+      .then((data) => { if (data.clientId) setWixAppId(data.clientId); })
+      .catch(() => {});
+  }, []);
 
   // Check if returning from Wix OAuth (fallback for redirect-based flow)
   useEffect(() => {
@@ -132,24 +141,14 @@ function OnboardingContent() {
   const handleConnectWix = async () => {
     if (!storeName || !selectedTemplate) return;
 
-    // 1. Get app ID from server
-    let appId = "";
-    try {
-      const configRes = await fetch("/api/wix-config");
-      const config = await configRes.json();
-      appId = config.clientId;
-    } catch {
-      toast.error("Erro ao obter configuração do Wix");
+    if (!wixAppId) {
+      toast.error("Wix App ID não configurado. Recarregue a página.");
       return;
     }
 
-    if (!appId) {
-      toast.error("Wix App ID não configurado");
-      return;
-    }
-
-    // 2. Open Wix installer in new tab (must be in direct click handler to avoid popup blocker)
-    const installUrl = `https://www.wix.com/installer/install?appId=${appId}`;
+    // 1. Open Wix installer FIRST (must be synchronous to avoid popup blocker)
+    const redirectUrl = `${window.location.origin}/api/wix/oauth/callback`;
+    const installUrl = `https://www.wix.com/installer/install?appId=${wixAppId}&redirectUrl=${encodeURIComponent(redirectUrl)}`;
     window.open(installUrl, "_blank");
 
     // 3. Create a pending store so the webhook can find it

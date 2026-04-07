@@ -1,87 +1,74 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { getPublicBaseUrl } from "@/lib/url";
+import { getOAuthToken } from "@/lib/wixOAuth";
 
-// Wix OAuth — Step 2: Handle callback, exchange code for tokens
+/**
+ * Wix OAuth Callback
+ *
+ * After the user installs the app via the Wix installer, Wix redirects
+ * here with `instanceId` (and optionally `code` / `state`).
+ *
+ * We use client_credentials + instance_id to get an access token,
+ * then update the pending store in Supabase so the polling on the
+ * original tab detects the connection.
+ */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const code = searchParams.get("code");
-  const state = searchParams.get("state");
   const instanceId = searchParams.get("instanceId");
 
-  const baseUrl = getPublicBaseUrl(request);
+  console.log("[OAuth Callback] instanceId:", instanceId);
 
-  if (!code || !state) {
-    return NextResponse.redirect(new URL("/onboarding?error=oauth_failed", baseUrl));
+  if (!instanceId) {
+    return new NextResponse(closePage("Erro: instanceId não recebido."), {
+      headers: { "Content-Type": "text/html" },
+    });
   }
 
-  let stateData: { userId: string; storeName: string; templateSiteId: string };
   try {
-    stateData = JSON.parse(Buffer.from(state, "base64").toString());
-  } catch {
-    return NextResponse.redirect(new URL("/onboarding?error=invalid_state", baseUrl));
-  }
+    // Get access token using client_credentials (new OAuth flow)
+    const accessToken = await getOAuthToken(instanceId);
 
-  const appId = process.env.WIX_OAUTH_APP_ID!;
-  const appSecret = process.env.WIX_OAUTH_APP_SECRET!;
+    // Find the most recent pending store and update it
+    const { data: pendingStore } = await supabase
+      .from("stores")
+      .select("id")
+      .eq("wix_site_id", "pending")
+      .eq("connection_method", "oauth")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
 
-  try {
-    // Exchange authorization code for access token
-    const tokenRes = await fetch("https://www.wixapis.com/oauth/access", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        grant_type: "authorization_code",
-        client_id: appId,
-        client_secret: appSecret,
-        code,
-      }),
+    if (pendingStore) {
+      await supabase
+        .from("stores")
+        .update({
+          wix_instance_id: instanceId,
+          wix_api_key: accessToken,
+        })
+        .eq("id", pendingStore.id);
+
+      console.log(`[OAuth Callback] Updated store ${pendingStore.id} with instanceId=${instanceId}`);
+    } else {
+      console.warn("[OAuth Callback] No pending store found, webhook will handle it");
+    }
+
+    // Close this tab — the original tab is polling and will detect the connection
+    return new NextResponse(closePage("App conectado com sucesso! Pode fechar esta aba."), {
+      headers: { "Content-Type": "text/html" },
     });
-
-    if (!tokenRes.ok) {
-      const errText = await tokenRes.text().catch(() => "");
-      console.error("Wix OAuth token error:", tokenRes.status, errText);
-      return NextResponse.redirect(new URL("/onboarding?error=token_failed", baseUrl));
-    }
-
-    const tokenData = await tokenRes.json();
-    const accessToken = tokenData.access_token;
-    const refreshToken = tokenData.refresh_token;
-
-    if (!accessToken) {
-      return NextResponse.redirect(new URL("/onboarding?error=no_token", baseUrl));
-    }
-
-    // Save tokens to Supabase as a pending store
-    const { data: store, error: dbError } = await supabase.from("stores").insert({
-      owner_id: stateData.userId,
-      name: stateData.storeName || "Nova Loja",
-      wix_api_key: accessToken,
-      wix_refresh_token: refreshToken || "",
-      wix_site_id: "pending",
-      wix_site_url: "",
-      wix_instance_id: instanceId || "",
-      primary_color: "#10b981",
-      secondary_color: "#18181b",
-      connection_method: "oauth",
-      template_ready: false,
-    }).select("id").single();
-
-    if (dbError) {
-      console.error("Supabase insert error:", dbError.message);
-    }
-
-    // Redirect back to onboarding with success + store ID
-    const params = new URLSearchParams({
-      wix_connected: "true",
-      storeName: stateData.storeName,
-      templateSiteId: stateData.templateSiteId,
-      pendingStoreId: store?.id || "",
-    });
-
-    return NextResponse.redirect(new URL(`/onboarding?${params.toString()}`, baseUrl));
   } catch (err) {
-    console.error("Wix OAuth callback error:", err);
-    return NextResponse.redirect(new URL("/onboarding?error=oauth_error", baseUrl));
+    console.error("[OAuth Callback] Error:", err);
+    return new NextResponse(closePage("Erro ao conectar. Volte para a aba anterior e tente novamente."), {
+      headers: { "Content-Type": "text/html" },
+    });
   }
+}
+
+function closePage(message: string): string {
+  return `<!DOCTYPE html>
+<html><head><title>Kit Store Builder</title>
+<style>body{background:#09090b;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.box{text-align:center;max-width:400px}.ok{color:#10b981;font-size:2rem;margin-bottom:1rem}</style></head>
+<body><div class="box"><div class="ok">✓</div><p>${message}</p></div>
+<script>setTimeout(()=>window.close(),2000)</script></body></html>`;
 }
