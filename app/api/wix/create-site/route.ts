@@ -6,7 +6,6 @@ import { getOAuthToken } from "@/lib/wixOAuth";
 const ALLOWED_TEMPLATES = new Set([
   "c208eaf8-8ed3-4ad2-947a-db65813006c2",
   "962b66f7-c9d1-4ba7-be05-354465e71d40",
-  "da927d82-5f52-46a6-bc33-9210fb916aaa",
 ]);
 
 export async function POST(request: Request) {

@@ -14,20 +14,14 @@ export const TEMPLATES: TemplateOption[] = [
   {
     id: "template-1",
     siteId: "c208eaf8-8ed3-4ad2-947a-db65813006c2",
-    name: "Modelo 1",
+    name: "Modelo 01",
     previewUrl: "https://mateusnnogueira451.wixsite.com/my-site-20",
   },
   {
     id: "template-2",
     siteId: "962b66f7-c9d1-4ba7-be05-354465e71d40",
-    name: "Modelo 2",
+    name: "Modelo 02",
     previewUrl: "https://mateusnnogueira451.wixsite.com/my-site-22",
-  },
-  {
-    id: "template-3",
-    siteId: "da927d82-5f52-46a6-bc33-9210fb916aaa",
-    name: "Modelo 3",
-    previewUrl: "https://mateusnnogueira451.wixsite.com/my-site-21",
   },
 ];
 
@@ -58,11 +52,11 @@ export function TemplateSelector({ selected, onSelect }: TemplateSelectorProps) 
                 <Check className="h-4 w-4 text-black" />
               </div>
             )}
-            <div className="relative w-full h-[280px] overflow-hidden bg-zinc-900">
+            <div className="relative w-full h-[420px] overflow-hidden bg-zinc-900">
               <iframe
                 src={template.previewUrl}
                 className="w-[1280px] h-[800px] origin-top-left pointer-events-none"
-                style={{ transform: "scale(0.35)", transformOrigin: "top left" }}
+                style={{ transform: "scale(0.52)", transformOrigin: "top left" }}
                 loading="lazy"
                 tabIndex={-1}
               />
