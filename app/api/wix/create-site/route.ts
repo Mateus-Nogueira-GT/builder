@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     }
 
     // Get the user's OAuth token from the pending store record
-    let userAccessToken: string | null = null;
+    let userAccessToken = "";
     let storeId = pendingStoreId;
 
     if (pendingStoreId) {
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         .eq("owner_id", token.id)
         .single();
 
-      userAccessToken = store?.wix_api_key || null;
+      userAccessToken = store?.wix_api_key || "";
     }
 
     if (!userAccessToken) {
