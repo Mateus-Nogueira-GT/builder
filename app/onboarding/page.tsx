@@ -76,7 +76,11 @@ function OnboardingContent() {
   const handleConnectWix = async () => {
     if (!storeName || !selectedTemplate) return;
 
-    // Create a pending store so the webhook can find it
+    // Open Wix FIRST (must be in direct click handler to avoid popup blocker)
+    const installUrl = `https://www.wix.com/installer/install?appId=${WIX_APP_ID}`;
+    window.open(installUrl, "_blank");
+
+    // Then create a pending store so the webhook can find it
     let createdStoreId = pendingStoreId;
     try {
       const res = await fetch("/api/stores", {
@@ -90,10 +94,6 @@ function OnboardingContent() {
         setPendingStoreId(data.id);
       }
     } catch { /* continue */ }
-
-    // Open Wix app installation in a new tab
-    const installUrl = `https://www.wix.com/installer/install?appId=${WIX_APP_ID}`;
-    window.open(installUrl, "_blank");
 
     // Start polling for connection
     setPageState("waiting");
