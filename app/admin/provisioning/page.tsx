@@ -156,8 +156,8 @@ export default function ProvisioningPage() {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-white text-base">{store.name}</CardTitle>
-                    <Badge className={STATUS_COLORS[store.connection_method as StatusFilter] || STATUS_COLORS.pending}>
-                      {STATUS_LABELS[store.connection_method as StatusFilter] || store.connection_method}
+                    <Badge className={STATUS_COLORS[store.status as StatusFilter] || STATUS_COLORS.pending}>
+                      {STATUS_LABELS[store.status as StatusFilter] || store.status}
                     </Badge>
                   </div>
                 </CardHeader>
@@ -165,7 +165,7 @@ export default function ProvisioningPage() {
                   <div className="space-y-1 text-sm text-zinc-400">
                     <p>
                       <span className="text-zinc-500">Template:</span>{" "}
-                      {getTemplateName(store.wix_instance_id)}
+                      {getTemplateName(store.template_id)}
                     </p>
                     <p>
                       <span className="text-zinc-500">Email:</span>{" "}
@@ -178,7 +178,7 @@ export default function ProvisioningPage() {
                   </div>
 
                   {/* Pending: show input fields */}
-                  {store.connection_method === "pending" && (
+                  {store.status === "pending" && (
                     <div className="space-y-2 pt-2 border-t border-zinc-800">
                       <Input
                         placeholder="Wix API Key"
@@ -215,7 +215,7 @@ export default function ProvisioningPage() {
                   )}
 
                   {/* Provisioned: show Wix dashboard link */}
-                  {store.connection_method === "provisioned" && store.wix_site_id && (
+                  {store.status === "provisioned" && store.wix_site_id && (
                     <div className="pt-2 border-t border-zinc-800">
                       <a
                         href={`https://manage.wix.com/dashboard/${store.wix_site_id}`}
