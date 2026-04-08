@@ -20,8 +20,8 @@ export interface Store {
   banner_cta_color: string | null;
   logo_variant: string | null;
   logo_svg: string | null;
-  template_id: string | null;
-  status: "pending" | "provisioning" | "provisioned" | "error";
+  // wix_refresh_token → used as template_id
+  // layout_type → used as status (pending/provisioning/provisioned/error)
   created_at: string;
 }
 
