@@ -112,28 +112,28 @@ export default function DashboardPage() {
                                 onConfigure={() => {
                                     // Popula a sessão com os dados da loja para reconfiguração
                                     const onboardingData = {
-                                        connectionMethod: (store.connection_method || 'api_key') as 'api_key' | 'oauth',
+                                        connectionMethod: 'api_key' as const,
                                         apiKey: store.wix_api_key || '',
-                                        siteId: store.wix_site_id,
+                                        siteId: store.wix_site_id || '',
                                         storeName: store.name,
                                         siteUrl: store.wix_site_url || '',
                                         email: store.owner_email || '',
                                         whatsapp: store.whatsapp || '',
                                         instagram: store.instagram || '',
-                                        city: store.city || '',
-                                        state: store.state || '',
-                                        focus: (store.focus as 'brasileirao' | 'copa' | 'retro' | 'todos' | null) || 'todos',
+                                        city: '',
+                                        state: '',
+                                        focus: 'todos' as const,
                                         featuredTeams: [],
-                                        activePromotion: store.active_promotion || 'Compre 2 Leve 3',
+                                        activePromotion: '',
                                         primaryColor: store.primary_color,
                                         secondaryColor: store.secondary_color,
-                                        heroBannerColor: 'VERMELHO',
+                                        heroBannerColor: '',
                                         heroBannerId: '',
                                         heroBannerDesktopUrl: '',
                                         heroBannerMobileUrl: '',
                                         heroBannerThumbnailUrl: '',
-                                        siteName: store.name, // Força o reconhecimento de "conectado"
-                                        instanceId: store.wix_instance_id || '',
+                                        siteName: store.name,
+                                        instanceId: '',
                                     };
                                     setSession({ onboarding: onboardingData, storeId: store.id });
                                     router.push('/onboarding');

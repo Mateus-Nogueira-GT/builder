@@ -103,15 +103,14 @@ export async function POST(request: Request) {
     const { data: store, error: dbError } = await supabase
       .from("stores")
       .insert({
-        owner_id: token.id,
         name: storeName,
+        owner_email: token.email || null,
         wix_api_key: WIX_API_KEY,
         wix_site_id: metaSiteId,
         wix_site_url: siteUrl,
-        wix_instance_id: metaSiteId,
         primary_color: "#10b981",
         secondary_color: "#18181b",
-        connection_method: "admin",
+        status: "provisioned",
       })
       .select("*")
       .single();
