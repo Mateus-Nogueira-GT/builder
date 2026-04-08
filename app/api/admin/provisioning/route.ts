@@ -17,9 +17,9 @@ export async function GET(request: Request) {
   const status = searchParams.get("status") || "pending";
 
   const { data, error } = await supabase
-    .from("stores")
+    .from("onboarding_requests")
     .select("*")
-    .eq("layout_type", status)
+    .eq("status", status)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -52,11 +52,11 @@ export async function POST(request: Request) {
 
     // Update store with Wix credentials and set status to provisioning
     const { error: updateError } = await supabase
-      .from("stores")
+      .from("onboarding_requests")
       .update({
         wix_api_key: wixApiKey,
         wix_site_id: wixSiteId,
-        layout_type: "provisioning",
+        status: "provisioning",
       })
       .eq("id", storeId);
 
@@ -86,8 +86,8 @@ export async function POST(request: Request) {
     if (!syncRes.ok) {
       // Mark store as error if sync failed to start
       await supabase
-        .from("stores")
-        .update({ layout_type: "error" })
+        .from("onboarding_requests")
+        .update({ status: "error" })
         .eq("id", storeId);
 
       return NextResponse.json(

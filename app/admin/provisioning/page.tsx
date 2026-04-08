@@ -8,7 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Shield, Rocket, ExternalLink } from "lucide-react";
 import { TEMPLATES } from "@/components/TemplateSelector";
-import type { Store } from "@/lib/schemas";
+interface OnboardingRequest {
+  id: string;
+  owner_id: string;
+  store_name: string;
+  template_id: string | null;
+  status: string;
+  wix_api_key: string | null;
+  wix_site_id: string | null;
+  created_at: string;
+}
 
 type StatusFilter = "pending" | "provisioning" | "provisioned" | "error";
 
@@ -28,7 +37,7 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
 
 export default function ProvisioningPage() {
   const [filter, setFilter] = useState<StatusFilter>("pending");
-  const [stores, setStores] = useState<Store[]>([]);
+  const [stores, setStores] = useState<OnboardingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [provisioningIds, setProvisioningIds] = useState<Set<string>>(new Set());
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
@@ -155,9 +164,9 @@ export default function ProvisioningPage() {
               <Card key={store.id} className="border-zinc-800 bg-zinc-900">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-white text-base">{store.name}</CardTitle>
-                    <Badge className={STATUS_COLORS[store.layout_type as StatusFilter] || STATUS_COLORS.pending}>
-                      {STATUS_LABELS[store.layout_type as StatusFilter] || store.layout_type}
+                    <CardTitle className="text-white text-base">{store.store_name}</CardTitle>
+                    <Badge className={STATUS_COLORS[store.status as StatusFilter] || STATUS_COLORS.pending}>
+                      {STATUS_LABELS[store.status as StatusFilter] || store.status}
                     </Badge>
                   </div>
                 </CardHeader>
@@ -165,7 +174,7 @@ export default function ProvisioningPage() {
                   <div className="space-y-1 text-sm text-zinc-400">
                     <p>
                       <span className="text-zinc-500">Template:</span>{" "}
-                      {getTemplateName(store.wix_refresh_token)}
+                      {getTemplateName(store.template_id)}
                     </p>
                     <p>
                       <span className="text-zinc-500">Email:</span>{" "}
@@ -178,7 +187,7 @@ export default function ProvisioningPage() {
                   </div>
 
                   {/* Pending: show input fields */}
-                  {store.layout_type === "pending" && (
+                  {store.status === "pending" && (
                     <div className="space-y-2 pt-2 border-t border-zinc-800">
                       <Input
                         placeholder="Wix API Key"
@@ -215,7 +224,7 @@ export default function ProvisioningPage() {
                   )}
 
                   {/* Provisioned: show Wix dashboard link */}
-                  {store.layout_type === "provisioned" && store.wix_site_id && (
+                  {store.status === "provisioned" && store.wix_site_id && (
                     <div className="pt-2 border-t border-zinc-800">
                       <a
                         href={`https://manage.wix.com/dashboard/${store.wix_site_id}`}
