@@ -13,12 +13,10 @@ const authOptions: AuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        // Busca o usuário no Supabase
-        const { data: user, error } = await supabase
-          .from("users")
-          .select("id, email, name, role, password_hash")
-          .eq("email", credentials.email)
-          .single();
+        // Busca o usuário via RPC (bypasses PostgREST cache)
+        const { data: user, error } = await supabase.rpc("find_user_by_email", {
+          p_email: credentials.email,
+        });
 
         console.log("[AUTH] Query result:", { error: error?.message, userFound: !!user, email: credentials.email });
 

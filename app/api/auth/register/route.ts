@@ -14,27 +14,19 @@ export async function POST(request: Request) {
     }
 
     // Check if email already exists
-    const { data: existing } = await supabase
-      .from("users")
-      .select("id")
-      .eq("email", email)
-      .single();
+    const { data: existing } = await supabase.rpc("find_user_by_email", { p_email: email });
 
     if (existing) {
       return NextResponse.json({ error: "Este email já está cadastrado" }, { status: 409 });
     }
 
-    // Create user (plain text password for now — same as existing auth)
-    const { data: user, error } = await supabase
-      .from("users")
-      .insert({
-        name: name || email.split("@")[0],
-        email,
-        password_hash: password,
-        role: "user",
-      })
-      .select("id, email, name")
-      .single();
+    // Create user via RPC (bypasses PostgREST cache)
+    const { data: user, error } = await supabase.rpc("insert_user", {
+      p_email: email,
+      p_name: name || email.split("@")[0],
+      p_password_hash: password,
+      p_role: "user",
+    });
 
     if (error) {
       return NextResponse.json({ error: "Erro ao criar conta: " + error.message }, { status: 500 });
