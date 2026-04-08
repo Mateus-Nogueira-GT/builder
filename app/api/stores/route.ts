@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       wix_api_key: body.apiKey || null,
       wix_site_id: body.siteId || "pending",
       wix_site_url: body.siteUrl || null,
-      wix_instance_id: body.instanceId || null,
+      wix_instance_id: body.templateId || body.instanceId || null,
       owner_email: body.email || null,
       whatsapp: body.whatsapp || null,
       instagram: body.instagram || null,
@@ -55,9 +55,7 @@ export async function POST(request: Request) {
       active_promotion: body.activePromotion || null,
       primary_color: body.primaryColor || "#10b981",
       secondary_color: body.secondaryColor || "#18181b",
-      connection_method: body.connectionMethod || "admin",
-      template_id: body.templateId || null,
-      status: body.status || "pending",
+      connection_method: body.status || body.connectionMethod || "pending",
     })
     .select("*")
     .single();
