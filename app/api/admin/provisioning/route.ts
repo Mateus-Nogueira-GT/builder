@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase
     .from("stores")
     .select("*")
-    .eq("connection_method", status)
+    .eq("status", status)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       .update({
         wix_api_key: wixApiKey,
         wix_site_id: wixSiteId,
-        connection_method: "provisioning",
+        status: "provisioning",
       })
       .eq("id", storeId);
 
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
       // Mark store as error if sync failed to start
       await supabase
         .from("stores")
-        .update({ connection_method: "error" })
+        .update({ status: "error" })
         .eq("id", storeId);
 
       return NextResponse.json(

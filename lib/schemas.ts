@@ -3,23 +3,25 @@
 export interface Store {
   id: string;
   name: string;
+  wix_site_id: string | null;
   wix_api_key: string | null;
-  wix_site_id: string;
   wix_site_url: string | null;
-  wix_instance_id: string | null;
-  owner_id: string;
+  wix_refresh_token: string | null;
+  owner_name: string | null;
   owner_email: string | null;
   whatsapp: string | null;
   instagram: string | null;
-  city: string | null;
-  state: string | null;
-  focus: "brasileirao" | "copa" | "retro" | "todos" | null;
-  active_promotion: string | null;
   primary_color: string;
   secondary_color: string;
-  connection_method: string | null; // used as status: "pending" | "provisioning" | "provisioned" | "error"
-  template_ready: boolean;
-  // wix_instance_id is used as template_id ("template-1" / "template-2")
+  accent_color: string | null;
+  layout_type: string | null;
+  banner_bg_color: string | null;
+  banner_text_color: string | null;
+  banner_cta_color: string | null;
+  logo_variant: string | null;
+  logo_svg: string | null;
+  template_id: string | null;
+  status: "pending" | "provisioning" | "provisioned" | "error";
   created_at: string;
 }
 

@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase
     .from("stores")
     .select("*")
-    .eq("owner_id", token.id)
+    .eq("owner_email", token.email)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -40,22 +40,18 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from("stores")
     .insert({
-      owner_id: token.id,
       name: body.name,
+      owner_name: body.ownerName || token.name || null,
+      owner_email: body.email || token.email || null,
       wix_api_key: body.apiKey || null,
-      wix_site_id: body.siteId || "pending",
+      wix_site_id: body.siteId || null,
       wix_site_url: body.siteUrl || null,
-      wix_instance_id: body.templateId || body.instanceId || null,
-      owner_email: body.email || null,
       whatsapp: body.whatsapp || null,
       instagram: body.instagram || null,
-      city: body.city || null,
-      state: body.state || null,
-      focus: body.focus || "todos",
-      active_promotion: body.activePromotion || null,
       primary_color: body.primaryColor || "#10b981",
       secondary_color: body.secondaryColor || "#18181b",
-      connection_method: body.status || body.connectionMethod || "pending",
+      template_id: body.templateId || null,
+      status: body.status || "pending",
     })
     .select("*")
     .single();
