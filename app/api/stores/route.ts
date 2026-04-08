@@ -41,15 +41,6 @@ export async function POST(request: Request) {
     .from("stores")
     .insert({
       name: body.name,
-      owner_name: body.ownerName || token.name || null,
-      owner_email: body.email || token.email || null,
-      wix_api_key: body.apiKey || null,
-      wix_site_id: body.siteId || null,
-      wix_site_url: body.siteUrl || null,
-      whatsapp: body.whatsapp || null,
-      instagram: body.instagram || null,
-      primary_color: body.primaryColor || "#10b981",
-      secondary_color: body.secondaryColor || "#18181b",
       template_id: body.templateId || null,
       status: body.status || "pending",
     })
