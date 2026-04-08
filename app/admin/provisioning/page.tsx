@@ -178,7 +178,7 @@ export default function ProvisioningPage() {
                     </p>
                     <p>
                       <span className="text-zinc-500">Email:</span>{" "}
-                      {store.owner_email || "—"}
+                      {store.owner_id || "—"}
                     </p>
                     <p>
                       <span className="text-zinc-500">Data:</span>{" "}
