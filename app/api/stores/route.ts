@@ -53,11 +53,11 @@ export async function POST(request: Request) {
   };
   console.log("[STORES POST] inserting:", JSON.stringify(insertPayload));
 
-  const { data, error } = await supabase
-    .from("stores")
-    .insert(insertPayload)
-    .select("id, name, wix_site_id, created_at")
-    .single();
+  const { data, error } = await supabase.rpc("insert_store", {
+    p_owner_id: insertPayload.owner_id,
+    p_name: insertPayload.name,
+    p_wix_site_id: insertPayload.wix_site_id,
+  });
 
   console.log("[STORES POST] result:", JSON.stringify({ data, error: error?.message, code: error?.code, details: error?.details }));
 
