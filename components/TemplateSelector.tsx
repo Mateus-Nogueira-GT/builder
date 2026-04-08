@@ -32,7 +32,7 @@ interface TemplateSelectorProps {
 
 export function TemplateSelector({ selected, onSelect }: TemplateSelectorProps) {
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-2 gap-4">
       {TEMPLATES.map((template) => {
         const isSelected = selected === template.siteId;
         return (
@@ -52,18 +52,18 @@ export function TemplateSelector({ selected, onSelect }: TemplateSelectorProps) 
                 <Check className="h-4 w-4 text-black" />
               </div>
             )}
-            <div className="relative w-full overflow-hidden bg-zinc-900">
+            <div className="relative w-full h-[280px] overflow-hidden bg-zinc-900">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={template.previewUrl}
                 alt={template.name}
-                className="w-full h-auto object-cover"
+                className="w-full h-full object-cover object-top"
                 loading="lazy"
               />
             </div>
             <div className="px-4 py-3 bg-zinc-900 border-t border-zinc-800">
               <p className="text-sm font-semibold text-white">{template.name}</p>
-              <p className="text-xs text-zinc-500 mt-0.5">Clique para visualizar</p>
+              <p className="text-xs text-zinc-500 mt-0.5">Clique para selecionar</p>
             </div>
           </button>
         );
