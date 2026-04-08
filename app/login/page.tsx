@@ -89,7 +89,7 @@ function LoginForm() {
             <Shirt className="h-7 w-7 text-emerald-500" />
           </div>
           <div>
-            <CardTitle className="text-2xl text-white">Kit Store Builder</CardTitle>
+            <CardTitle className="text-2xl text-white">Construtor de lojas</CardTitle>
             <p className="mt-1 text-sm text-zinc-400">
               {mode === "login" ? "Faça login para gerenciar suas lojas" : "Crie sua conta gratuita"}
             </p>

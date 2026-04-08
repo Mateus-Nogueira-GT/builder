@@ -71,7 +71,7 @@ export default function PublishingPage() {
                     <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10">
                         <Shirt className="h-6 w-6 text-emerald-500" />
                     </div>
-                    <h1 className="text-3xl font-bold">Kit Store Builder</h1>
+                    <h1 className="text-3xl font-bold">Construtor de lojas</h1>
                     <p className="text-zinc-400">Publicando sua loja...</p>
                 </div>
 

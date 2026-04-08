@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Kit Store Builder — Crie sua loja de camisas de time",
+  title: "Construtor de lojas — Crie sua loja de camisas de time",
   description:
     "Painel para configurar e publicar automaticamente lojas de camisas de futebol no Wix, com conteúdo gerado por IA.",
 };
