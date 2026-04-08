@@ -42,8 +42,8 @@ export async function POST(request: Request) {
     .insert({
       owner_id: token.id,
       name: body.name,
-      wix_api_key: body.apiKey,
-      wix_site_id: body.siteId,
+      wix_api_key: body.apiKey || null,
+      wix_site_id: body.siteId || "pending",
       wix_site_url: body.siteUrl || null,
       wix_instance_id: body.instanceId || null,
       owner_email: body.email || null,
