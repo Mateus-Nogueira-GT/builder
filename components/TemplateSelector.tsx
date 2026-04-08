@@ -15,13 +15,13 @@ export const TEMPLATES: TemplateOption[] = [
     id: "template-1",
     siteId: "c208eaf8-8ed3-4ad2-947a-db65813006c2",
     name: "Modelo 01",
-    previewUrl: "https://mateusnnogueira451.wixsite.com/my-site-20",
+    previewUrl: "/templates/template-01.jpeg",
   },
   {
     id: "template-2",
     siteId: "962b66f7-c9d1-4ba7-be05-354465e71d40",
     name: "Modelo 02",
-    previewUrl: "https://mateusnnogueira451.wixsite.com/my-site-22",
+    previewUrl: "/templates/template-02.jpeg",
   },
 ];
 
@@ -52,13 +52,13 @@ export function TemplateSelector({ selected, onSelect }: TemplateSelectorProps) 
                 <Check className="h-4 w-4 text-black" />
               </div>
             )}
-            <div className="relative w-full h-[420px] overflow-hidden bg-zinc-900">
-              <iframe
+            <div className="relative w-full overflow-hidden bg-zinc-900">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
                 src={template.previewUrl}
-                className="w-[1280px] h-[800px] origin-top-left pointer-events-none"
-                style={{ transform: "scale(0.52)", transformOrigin: "top left" }}
+                alt={template.name}
+                className="w-full h-auto object-cover"
                 loading="lazy"
-                tabIndex={-1}
               />
             </div>
             <div className="px-4 py-3 bg-zinc-900 border-t border-zinc-800">
