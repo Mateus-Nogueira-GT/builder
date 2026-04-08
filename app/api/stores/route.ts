@@ -44,7 +44,6 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from("stores")
     .insert({
-      owner_id: token.id,
       name: storeName,
       wix_site_id: "pending",
     })
