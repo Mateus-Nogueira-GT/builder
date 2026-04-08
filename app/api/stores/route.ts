@@ -42,6 +42,7 @@ export async function POST(request: Request) {
     .insert({
       owner_id: token.id,
       name: body.name,
+      wix_site_id: "pending",
     })
     .select("*")
     .single();
