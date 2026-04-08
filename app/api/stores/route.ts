@@ -41,8 +41,6 @@ export async function POST(request: Request) {
     .from("stores")
     .insert({
       name: body.name,
-      template_id: body.templateId || null,
-      status: body.status || "pending",
     })
     .select("*")
     .single();
