@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       owner_id: token.id,
       name: body.name,
       wix_site_id: "pending",
+      template_id: body.templateId || null,
     })
     .select("*")
     .single();
