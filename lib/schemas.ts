@@ -17,10 +17,8 @@ export interface Store {
   active_promotion: string | null;
   primary_color: string;
   secondary_color: string;
-  connection_method: string | null;
+  connection_method: string | null; // also used as status: "pending" | "provisioning" | "provisioned" | "error"
   template_ready: boolean;
-  template_id: string | null;
-  status: "pending" | "provisioning" | "provisioned" | "error";
   created_at: string;
 }
 
