@@ -37,13 +37,16 @@ export async function POST(request: Request) {
 
   const body = await request.json();
 
+  const storeName = body.templateId
+    ? `${body.name} | ${body.templateId}`
+    : body.name;
+
   const { data, error } = await supabase
-    .from("onboarding_requests")
+    .from("stores")
     .insert({
       owner_id: token.id,
-      store_name: body.name,
-      template_id: body.templateId || null,
-      status: body.status || "pending",
+      name: storeName,
+      wix_site_id: "pending",
     })
     .select("*")
     .single();

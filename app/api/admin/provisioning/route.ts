@@ -16,11 +16,15 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status") || "pending";
 
-  const { data, error } = await supabase
-    .from("onboarding_requests")
-    .select("*")
-    .eq("status", status)
-    .order("created_at", { ascending: false });
+  let query = supabase.from("stores").select("*").order("created_at", { ascending: false });
+
+  if (status === "pending") {
+    query = query.eq("wix_site_id", "pending");
+  } else if (status === "provisioned") {
+    query = query.neq("wix_site_id", "pending").not("wix_site_id", "is", null);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -52,11 +56,10 @@ export async function POST(request: Request) {
 
     // Update store with Wix credentials and set status to provisioning
     const { error: updateError } = await supabase
-      .from("onboarding_requests")
+      .from("stores")
       .update({
         wix_api_key: wixApiKey,
         wix_site_id: wixSiteId,
-        status: "provisioning",
       })
       .eq("id", storeId);
 
@@ -86,8 +89,8 @@ export async function POST(request: Request) {
     if (!syncRes.ok) {
       // Mark store as error if sync failed to start
       await supabase
-        .from("onboarding_requests")
-        .update({ status: "error" })
+        .from("stores")
+        .update({ wix_site_id: "error" })
         .eq("id", storeId);
 
       return NextResponse.json(

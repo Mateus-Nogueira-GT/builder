@@ -8,14 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Shield, Rocket, ExternalLink } from "lucide-react";
 import { TEMPLATES } from "@/components/TemplateSelector";
-interface OnboardingRequest {
+interface PendingStore {
   id: string;
+  name: string;
   owner_id: string;
-  store_name: string;
-  template_id: string | null;
-  status: string;
-  wix_api_key: string | null;
   wix_site_id: string | null;
+  wix_api_key: string | null;
   created_at: string;
 }
 
@@ -37,7 +35,7 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
 
 export default function ProvisioningPage() {
   const [filter, setFilter] = useState<StatusFilter>("pending");
-  const [stores, setStores] = useState<OnboardingRequest[]>([]);
+  const [stores, setStores] = useState<PendingStore[]>([]);
   const [loading, setLoading] = useState(true);
   const [provisioningIds, setProvisioningIds] = useState<Set<string>>(new Set());
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
@@ -95,10 +93,21 @@ export default function ProvisioningPage() {
     }
   };
 
+  const parseStoreName = (name: string) => {
+    const parts = name.split(" | ");
+    return { storeName: parts[0], templateId: parts[1] || null };
+  };
+
   const getTemplateName = (templateId: string | null) => {
     if (!templateId) return "—";
     const tmpl = TEMPLATES.find((t) => t.id === templateId);
     return tmpl?.name || templateId;
+  };
+
+  const getStatus = (wixSiteId: string | null): StatusFilter => {
+    if (!wixSiteId || wixSiteId === "pending") return "pending";
+    if (wixSiteId === "error") return "error";
+    return "provisioned";
   };
 
   return (
@@ -160,13 +169,16 @@ export default function ProvisioningPage() {
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {stores.map((store) => (
+            {stores.map((store) => {
+              const { storeName, templateId } = parseStoreName(store.name);
+              const status = getStatus(store.wix_site_id);
+              return (
               <Card key={store.id} className="border-zinc-800 bg-zinc-900">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-white text-base">{store.store_name}</CardTitle>
-                    <Badge className={STATUS_COLORS[store.status as StatusFilter] || STATUS_COLORS.pending}>
-                      {STATUS_LABELS[store.status as StatusFilter] || store.status}
+                    <CardTitle className="text-white text-base">{storeName}</CardTitle>
+                    <Badge className={STATUS_COLORS[status] || STATUS_COLORS.pending}>
+                      {STATUS_LABELS[status]}
                     </Badge>
                   </div>
                 </CardHeader>
@@ -174,11 +186,7 @@ export default function ProvisioningPage() {
                   <div className="space-y-1 text-sm text-zinc-400">
                     <p>
                       <span className="text-zinc-500">Template:</span>{" "}
-                      {getTemplateName(store.template_id)}
-                    </p>
-                    <p>
-                      <span className="text-zinc-500">Email:</span>{" "}
-                      {store.owner_id || "—"}
+                      {getTemplateName(templateId)}
                     </p>
                     <p>
                       <span className="text-zinc-500">Data:</span>{" "}
@@ -187,7 +195,7 @@ export default function ProvisioningPage() {
                   </div>
 
                   {/* Pending: show input fields */}
-                  {store.status === "pending" && (
+                  {status === "pending" && (
                     <div className="space-y-2 pt-2 border-t border-zinc-800">
                       <Input
                         placeholder="Wix API Key"
@@ -224,7 +232,7 @@ export default function ProvisioningPage() {
                   )}
 
                   {/* Provisioned: show Wix dashboard link */}
-                  {store.status === "provisioned" && store.wix_site_id && (
+                  {status === "provisioned" && store.wix_site_id && (
                     <div className="pt-2 border-t border-zinc-800">
                       <a
                         href={`https://manage.wix.com/dashboard/${store.wix_site_id}`}
@@ -239,7 +247,8 @@ export default function ProvisioningPage() {
                   )}
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
