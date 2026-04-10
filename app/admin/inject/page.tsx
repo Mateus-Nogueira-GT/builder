@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState } from 'react';
 import {
   Syringe,
   AlertTriangle,
@@ -8,14 +8,12 @@ import {
   Upload,
   Loader2,
   CheckCircle2,
-  XCircle,
   ExternalLink,
   RotateCcw,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
 interface StoreInfo {
@@ -26,13 +24,7 @@ interface StoreInfo {
   owner_email: string;
 }
 
-interface LogEntry {
-  message: string;
-  status: 'running' | 'success' | 'warning' | 'error';
-  step?: string;
-}
-
-type JobStatus = 'idle' | 'running' | 'success' | 'error';
+type PageStatus = 'idle' | 'success' | 'error';
 
 export default function AdminInjectPage() {
   const [email, setEmail] = useState('');
@@ -41,17 +33,9 @@ export default function AdminInjectPage() {
   const [siteId, setSiteId] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [siteUrl, setSiteUrl] = useState('');
-
-  const [jobStatus, setJobStatus] = useState<JobStatus>('idle');
-  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [status, setStatus] = useState<PageStatus>('idle');
   const [finalSiteUrl, setFinalSiteUrl] = useState('');
   const [injecting, setInjecting] = useState(false);
-
-  const logsEndRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = useCallback(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
 
   const searchStore = async () => {
     if (!email.trim()) {
@@ -90,12 +74,8 @@ export default function AdminInjectPage() {
     }
 
     setInjecting(true);
-    setJobStatus('running');
-    setLogs([]);
-    setFinalSiteUrl('');
 
     try {
-      // Update store with Wix credentials
       const updateRes = await fetch('/api/admin/inject/update-store', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -112,69 +92,19 @@ export default function AdminInjectPage() {
         throw new Error(err.error || 'Erro ao atualizar loja.');
       }
 
-      // Start injection
-      const injectRes = await fetch('/api/inject', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeId: store.id,
-          siteId: siteId.trim() || undefined,
-          apiKey: apiKey.trim() || undefined,
-          payload: {},
-        }),
-      });
-
-      if (!injectRes.ok) {
-        const err = await injectRes.json();
-        throw new Error(err.error || 'Erro ao iniciar injeção.');
-      }
-
-      const { jobId } = await injectRes.json();
-
-      // Connect SSE
-      const evtSource = new EventSource(`/api/inject/${jobId}`);
-
-      evtSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'log') {
-          setLogs((prev) => [...prev, { message: data.message, status: data.status, step: data.step }]);
-          setTimeout(scrollToBottom, 50);
-        }
-
-        if (data.type === 'complete') {
-          setJobStatus('success');
-          setFinalSiteUrl(data.siteUrl || siteUrl);
-          setInjecting(false);
-          evtSource.close();
-          toast.success('Injeção concluída!');
-        }
-
-        if (data.type === 'error') {
-          setJobStatus('error');
-          setLogs((prev) => [...prev, { message: data.message, status: 'error' }]);
-          setInjecting(false);
-          evtSource.close();
-          toast.error('Injeção falhou.');
-        }
-      };
-
-      evtSource.onerror = () => {
-        setJobStatus('error');
-        setInjecting(false);
-        evtSource.close();
-        toast.error('Conexão com o servidor perdida.');
-      };
+      setStatus('success');
+      setFinalSiteUrl(siteUrl.trim());
+      toast.success('Dados inseridos com sucesso!');
     } catch (err) {
-      setJobStatus('error');
-      setInjecting(false);
+      setStatus('error');
       toast.error(err instanceof Error ? err.message : 'Erro inesperado.');
+    } finally {
+      setInjecting(false);
     }
   };
 
   const handleReset = () => {
-    setJobStatus('idle');
-    setLogs([]);
+    setStatus('idle');
     setFinalSiteUrl('');
     setInjecting(false);
     setSiteId('');
@@ -182,21 +112,6 @@ export default function AdminInjectPage() {
     setSiteUrl('');
     setStore(null);
     setEmail('');
-  };
-
-  const statusIcon = (status: string) => {
-    switch (status) {
-      case 'running':
-        return <Loader2 className="h-4 w-4 text-blue-400 animate-spin" />;
-      case 'success':
-        return <CheckCircle2 className="h-4 w-4 text-emerald-400" />;
-      case 'warning':
-        return <AlertTriangle className="h-4 w-4 text-yellow-400" />;
-      case 'error':
-        return <XCircle className="h-4 w-4 text-red-400" />;
-      default:
-        return null;
-    }
   };
 
   return (
@@ -294,46 +209,13 @@ export default function AdminInjectPage() {
           </CardContent>
         </Card>
 
-        {/* Logs */}
-        {jobStatus !== 'idle' && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Logs</CardTitle>
-              <Badge
-                variant={
-                  jobStatus === 'success'
-                    ? 'default'
-                    : jobStatus === 'error'
-                      ? 'destructive'
-                      : 'secondary'
-                }
-              >
-                {jobStatus === 'running' && 'Em andamento'}
-                {jobStatus === 'success' && 'Concluido'}
-                {jobStatus === 'error' && 'Erro'}
-              </Badge>
-            </CardHeader>
-            <CardContent>
-              <div className="max-h-72 overflow-y-auto space-y-2 text-sm">
-                {logs.map((log, i) => (
-                  <div key={i} className="flex items-start gap-2">
-                    <span className="mt-0.5 shrink-0">{statusIcon(log.status)}</span>
-                    <span className="text-zinc-300">{log.message}</span>
-                  </div>
-                ))}
-                <div ref={logsEndRef} />
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Success card */}
-        {jobStatus === 'success' && (
+        {status === 'success' && (
           <Card className="border-emerald-500/30">
             <CardContent className="pt-6 space-y-4">
               <div className="flex items-center gap-2 text-emerald-400">
                 <CheckCircle2 className="h-5 w-5" />
-                <span className="font-semibold">Injeção concluída com sucesso!</span>
+                <span className="font-semibold">Dados inseridos com sucesso!</span>
               </div>
 
               {finalSiteUrl && (
