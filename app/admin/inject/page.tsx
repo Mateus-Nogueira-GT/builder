@@ -174,13 +174,13 @@ export default function AdminInjectPage() {
 
             {/* Wix fields */}
             <Input
-              placeholder="wix_site_id"
+              placeholder="WIX Site ID"
               className="font-mono"
               value={siteId}
               onChange={(e) => setSiteId(e.target.value)}
             />
             <Input
-              placeholder="wix_api_key"
+              placeholder="WIX API KEY"
               className="font-mono"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
