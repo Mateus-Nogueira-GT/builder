@@ -33,9 +33,8 @@ export async function POST(request: Request) {
                 .single();
 
             if (storeError || !storeData) {
-                console.error('Store lookup failed:', { resolvedStoreId, storeError });
                 return NextResponse.json(
-                    { error: `Loja nao encontrada: ${storeError?.message || 'sem dados'}`, storeId: resolvedStoreId },
+                    { error: 'Loja selecionada nao foi encontrada no banco.' },
                     { status: 404 }
                 );
             }

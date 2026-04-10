@@ -66,9 +66,7 @@ export default function AdminInjectPage() {
       const res = await fetch(`/api/admin/inject/search?email=${encodeURIComponent(email.trim())}`);
       const data = await res.json();
 
-      if (!res.ok) {
-        toast.error(`Erro ${res.status}: ${data.error || 'Erro ao buscar'}`);
-      } else if (data.store) {
+      if (data.store) {
         setStore(data.store);
         toast.success(`Loja encontrada: ${data.store.name}`);
       } else {
