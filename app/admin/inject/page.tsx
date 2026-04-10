@@ -21,7 +21,6 @@ import { toast } from 'sonner';
 interface StoreInfo {
   id: string;
   name: string;
-  focus: string;
   primary_color: string;
   secondary_color: string;
   owner_email: string;
@@ -249,7 +248,6 @@ export default function AdminInjectPage() {
             {store && (
               <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 space-y-1 text-sm">
                 <p className="font-semibold text-emerald-300">{store.name}</p>
-                <p className="text-zinc-300">Foco: {store.focus || 'N/A'}</p>
                 <div className="flex items-center gap-2 text-zinc-300">
                   Cor primária:
                   <span

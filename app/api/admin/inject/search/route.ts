@@ -11,7 +11,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabase
     .from('stores')
-    .select('id, name, focus, primary_color, secondary_color, owner_email')
+    .select('id, name, primary_color, secondary_color, owner_email')
     .ilike('owner_email', email)
     .limit(1);
 
