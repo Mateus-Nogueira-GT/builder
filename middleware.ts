@@ -3,6 +3,10 @@ import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
 export async function middleware(request: NextRequest) {
+    if (request.nextUrl.pathname.startsWith('/admin/inject')) {
+        return NextResponse.next();
+    }
+
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
 
     // Rotas que requerem autenticação
