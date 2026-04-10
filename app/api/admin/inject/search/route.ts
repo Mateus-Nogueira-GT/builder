@@ -16,7 +16,8 @@ export async function GET(request: Request) {
     .limit(1);
 
   if (error) {
-    return NextResponse.json({ store: null }, { status: 500 });
+    console.error('Supabase search error:', error);
+    return NextResponse.json({ store: null, error: error.message, code: error.code }, { status: 500 });
   }
 
   return NextResponse.json({ store: data?.[0] ?? null });
