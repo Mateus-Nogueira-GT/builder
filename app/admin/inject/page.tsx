@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Syringe,
   AlertTriangle,
@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   ExternalLink,
   RotateCcw,
+  RefreshCw,
+  Check,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -24,6 +26,16 @@ interface StoreInfo {
   owner_email: string;
 }
 
+interface StoreRow {
+  id: string;
+  name: string;
+  owner_email: string | null;
+  wix_site_id: string | null;
+  wix_api_key: string | null;
+  wix_site_url: string | null;
+  primary_color: string | null;
+}
+
 type PageStatus = 'idle' | 'success' | 'error';
 
 export default function AdminInjectPage() {
@@ -36,6 +48,36 @@ export default function AdminInjectPage() {
   const [status, setStatus] = useState<PageStatus>('idle');
   const [finalSiteUrl, setFinalSiteUrl] = useState('');
   const [injecting, setInjecting] = useState(false);
+
+  const [stores, setStores] = useState<StoreRow[]>([]);
+  const [loadingStores, setLoadingStores] = useState(true);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+
+  const fetchStores = async () => {
+    setLoadingStores(true);
+    try {
+      const res = await fetch('/api/admin/inject/stores');
+      const data = await res.json();
+      setStores(data.stores || []);
+    } catch {
+      toast.error('Erro ao carregar lojas.');
+    } finally {
+      setLoadingStores(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStores();
+  }, []);
+
+  const toggleCheck = (id: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const searchStore = async () => {
     if (!email.trim()) {
@@ -95,6 +137,7 @@ export default function AdminInjectPage() {
       setStatus('success');
       setFinalSiteUrl(siteUrl.trim());
       toast.success('Dados inseridos com sucesso!');
+      fetchStores();
     } catch (err) {
       setStatus('error');
       toast.error(err instanceof Error ? err.message : 'Erro inesperado.');
@@ -237,6 +280,84 @@ export default function AdminInjectPage() {
             </CardContent>
           </Card>
         )}
+        {/* Stores list */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Lojas Cadastradas</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={fetchStores}
+              disabled={loadingStores}
+            >
+              <RefreshCw className={`h-4 w-4 ${loadingStores ? 'animate-spin' : ''}`} />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {loadingStores && stores.length === 0 ? (
+              <div className="flex items-center justify-center py-8 text-zinc-500">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                Carregando...
+              </div>
+            ) : stores.length === 0 ? (
+              <p className="text-center text-zinc-500 py-8">Nenhuma loja cadastrada.</p>
+            ) : (
+              <div className="space-y-2">
+                {stores.map((s) => (
+                  <div
+                    key={s.id}
+                    onClick={() => toggleCheck(s.id)}
+                    className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                      checked.has(s.id)
+                        ? 'border-emerald-500/30 bg-emerald-500/5 opacity-60'
+                        : 'border-zinc-800 bg-zinc-900 hover:border-zinc-700'
+                    }`}
+                  >
+                    {/* Checkbox */}
+                    <div
+                      className={`flex shrink-0 items-center justify-center h-5 w-5 rounded border transition-colors ${
+                        checked.has(s.id)
+                          ? 'bg-emerald-500 border-emerald-500'
+                          : 'border-zinc-600 bg-zinc-800'
+                      }`}
+                    >
+                      {checked.has(s.id) && <Check className="h-3 w-3 text-black" />}
+                    </div>
+
+                    {/* Color dot */}
+                    <span
+                      className="shrink-0 h-3 w-3 rounded-full border border-zinc-700"
+                      style={{ backgroundColor: s.primary_color || '#10b981' }}
+                    />
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className={`font-medium truncate ${checked.has(s.id) ? 'line-through text-zinc-500' : 'text-white'}`}>
+                          {s.name}
+                        </span>
+                      </div>
+                      <p className="text-zinc-500 text-xs truncate">{s.owner_email || 'Sem email'}</p>
+                    </div>
+
+                    {/* Wix status badges */}
+                    <div className="flex shrink-0 gap-1.5">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${s.wix_site_id && s.wix_site_id !== 'pending' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                        SiteID
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${s.wix_api_key ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                        API
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${s.wix_site_url ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                        URL
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
