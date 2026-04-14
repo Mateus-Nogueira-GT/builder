@@ -52,6 +52,7 @@ export default function AdminInjectPage() {
   const [stores, setStores] = useState<StoreRow[]>([]);
   const [loadingStores, setLoadingStores] = useState(true);
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const fetchStores = async () => {
     setLoadingStores(true);
@@ -306,52 +307,75 @@ export default function AdminInjectPage() {
                 {stores.map((s) => (
                   <div
                     key={s.id}
-                    onClick={() => toggleCheck(s.id)}
-                    className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                    className={`rounded-lg border transition-colors ${
                       checked.has(s.id)
                         ? 'border-emerald-500/30 bg-emerald-500/5 opacity-60'
                         : 'border-zinc-800 bg-zinc-900 hover:border-zinc-700'
                     }`}
                   >
-                    {/* Checkbox */}
-                    <div
-                      className={`flex shrink-0 items-center justify-center h-5 w-5 rounded border transition-colors ${
-                        checked.has(s.id)
-                          ? 'bg-emerald-500 border-emerald-500'
-                          : 'border-zinc-600 bg-zinc-800'
-                      }`}
-                    >
-                      {checked.has(s.id) && <Check className="h-3 w-3 text-black" />}
-                    </div>
+                    <div className="flex items-center gap-3 p-3">
+                      {/* Checkbox */}
+                      <div
+                        onClick={(e) => { e.stopPropagation(); toggleCheck(s.id); }}
+                        className={`flex shrink-0 items-center justify-center h-5 w-5 rounded border cursor-pointer transition-colors ${
+                          checked.has(s.id)
+                            ? 'bg-emerald-500 border-emerald-500'
+                            : 'border-zinc-600 bg-zinc-800 hover:border-zinc-500'
+                        }`}
+                      >
+                        {checked.has(s.id) && <Check className="h-3 w-3 text-black" />}
+                      </div>
 
-                    {/* Color dot */}
-                    <span
-                      className="shrink-0 h-3 w-3 rounded-full border border-zinc-700"
-                      style={{ backgroundColor: s.primary_color || '#10b981' }}
-                    />
+                      {/* Color dot */}
+                      <span
+                        className="shrink-0 h-3 w-3 rounded-full border border-zinc-700"
+                        style={{ backgroundColor: s.primary_color || '#10b981' }}
+                      />
 
-                    {/* Info */}
-                    <div className="flex-1 min-w-0 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className={`font-medium truncate ${checked.has(s.id) ? 'line-through text-zinc-500' : 'text-white'}`}>
-                          {s.name}
+                      {/* Info - clickable to expand */}
+                      <div
+                        className="flex-1 min-w-0 text-sm cursor-pointer"
+                        onClick={() => setExpanded(expanded === s.id ? null : s.id)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`font-medium truncate ${checked.has(s.id) ? 'line-through text-zinc-500' : 'text-white'}`}>
+                            {s.name}
+                          </span>
+                        </div>
+                        <p className="text-zinc-500 text-xs truncate">{s.owner_email || 'Sem email'}</p>
+                      </div>
+
+                      {/* Wix status badges */}
+                      <div className="flex shrink-0 gap-1.5">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${s.wix_site_id && s.wix_site_id !== 'pending' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                          SiteID
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${s.wix_api_key ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                          API
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${s.wix_site_url ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                          URL
                         </span>
                       </div>
-                      <p className="text-zinc-500 text-xs truncate">{s.owner_email || 'Sem email'}</p>
                     </div>
 
-                    {/* Wix status badges */}
-                    <div className="flex shrink-0 gap-1.5">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${s.wix_site_id && s.wix_site_id !== 'pending' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
-                        SiteID
-                      </span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${s.wix_api_key ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
-                        API
-                      </span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${s.wix_site_url ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
-                        URL
-                      </span>
-                    </div>
+                    {/* Expanded details */}
+                    {expanded === s.id && (
+                      <div className="border-t border-zinc-800 px-3 py-3 space-y-1.5 text-xs font-mono text-zinc-400">
+                        <div><span className="text-zinc-500">Site ID:</span> {s.wix_site_id && s.wix_site_id !== 'pending' ? s.wix_site_id : <span className="text-zinc-600 italic">vazio</span>}</div>
+                        <div><span className="text-zinc-500">API Key:</span> {s.wix_api_key ? `${s.wix_api_key.slice(0, 12)}...` : <span className="text-zinc-600 italic">vazio</span>}</div>
+                        <div>
+                          <span className="text-zinc-500">URL:</span>{' '}
+                          {s.wix_site_url ? (
+                            <a href={s.wix_site_url} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline break-all">
+                              {s.wix_site_url}
+                            </a>
+                          ) : (
+                            <span className="text-zinc-600 italic">vazio</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
