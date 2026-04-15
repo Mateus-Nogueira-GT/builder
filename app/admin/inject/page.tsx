@@ -34,6 +34,7 @@ interface StoreRow {
   wix_api_key: string | null;
   wix_site_url: string | null;
   primary_color: string | null;
+  password: string | null;
 }
 
 type PageStatus = 'idle' | 'success' | 'error';
@@ -363,6 +364,7 @@ export default function AdminInjectPage() {
                     {expanded === s.id && (
                       <div className="border-t border-zinc-800 px-3 py-3 space-y-1.5 text-xs font-mono text-zinc-400">
                         <div><span className="text-zinc-500">Site ID:</span> {s.wix_site_id && s.wix_site_id !== 'pending' ? s.wix_site_id : <span className="text-zinc-600 italic">vazio</span>}</div>
+                        <div><span className="text-zinc-500">Senha:</span> {s.password ? s.password : <span className="text-zinc-600 italic">vazio</span>}</div>
                         <div><span className="text-zinc-500">API Key:</span> {s.wix_api_key ? `${s.wix_api_key.slice(0, 12)}...` : <span className="text-zinc-600 italic">vazio</span>}</div>
                         <div>
                           <span className="text-zinc-500">URL:</span>{' '}
