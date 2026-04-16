@@ -53,8 +53,7 @@ export async function GET(request: Request) {
       console.log(`[OAuth Callback] Store ${storeId} atualizada com instanceId=${instanceId}`);
     }
 
-    // Limpa dados de sessão do onboarding e redireciona para o dashboard
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/onboarding/success", request.url));
   } catch (err) {
     console.error("[OAuth Callback] Error:", err);
     return NextResponse.redirect(

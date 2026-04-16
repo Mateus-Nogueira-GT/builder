@@ -21,10 +21,11 @@ function OnboardingContent() {
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [storeName, setStoreName] = useState("");
+  const [phone, setPhone] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateOption | null>(null);
 
   const handleSubmit = async () => {
-    if (!storeName || !selectedTemplate) return;
+    if (!storeName || !phone || !selectedTemplate) return;
     setSubmitting(true);
 
     try {
@@ -34,6 +35,7 @@ function OnboardingContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: storeName,
+          phone,
           templateId: selectedTemplate.id,
           status: "pending",
         }),
@@ -94,8 +96,18 @@ function OnboardingContent() {
                   className="bg-zinc-800 border-zinc-700"
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-zinc-300">WhatsApp / Telefone *</label>
+                <Input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Ex: (11) 99999-9999"
+                  type="tel"
+                  className="bg-zinc-800 border-zinc-700"
+                />
+              </div>
               <div className="flex justify-end">
-                <Button onClick={() => setStep(1)} disabled={storeName.length === 0} className="bg-emerald-500 text-black font-bold">
+                <Button onClick={() => setStep(1)} disabled={storeName.length === 0 || phone.length === 0} className="bg-emerald-500 text-black font-bold">
                   Próximo <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </div>

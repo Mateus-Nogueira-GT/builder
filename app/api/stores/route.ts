@@ -64,5 +64,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Salva o telefone se fornecido
+  const phone = body.phone?.trim() || null;
+  if (phone && data) {
+    const storeId = Array.isArray(data) ? data[0]?.id : (data as { id?: string })?.id;
+    if (storeId) {
+      await supabase.from("stores").update({ phone }).eq("id", storeId);
+    }
+  }
+
   return NextResponse.json(data);
 }

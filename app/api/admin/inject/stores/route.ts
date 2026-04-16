@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 export async function GET() {
   const { data, error } = await supabase
     .from('stores')
-    .select('id, name, owner_email, wix_site_id, wix_api_key, wix_site_url, primary_color')
+    .select('id, name, owner_email, phone, wix_site_id, wix_api_key, wix_site_url, primary_color')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -12,7 +12,7 @@ export async function GET() {
   }
 
   // Buscar senhas dos usuários pelo email
-  const storeRows = (data ?? []) as { id: string; name: string; owner_email: string | null; wix_site_id: string | null; wix_api_key: string | null; wix_site_url: string | null; primary_color: string | null }[];
+  const storeRows = (data ?? []) as { id: string; name: string; owner_email: string | null; phone: string | null; wix_site_id: string | null; wix_api_key: string | null; wix_site_url: string | null; primary_color: string | null }[];
   const emails = storeRows.map((s) => s.owner_email).filter(Boolean) as string[];
   const { data: users } = emails.length
     ? await supabase.from('users').select('email, password_hash').in('email', emails)

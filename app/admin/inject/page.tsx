@@ -30,6 +30,7 @@ interface StoreRow {
   id: string;
   name: string;
   owner_email: string | null;
+  phone: string | null;
   wix_site_id: string | null;
   wix_api_key: string | null;
   wix_site_url: string | null;
@@ -343,7 +344,10 @@ export default function AdminInjectPage() {
                             {s.name}
                           </span>
                         </div>
-                        <p className="text-zinc-500 text-xs truncate">{s.owner_email || 'Sem email'}</p>
+                        <p className="text-zinc-500 text-xs truncate">
+                          {s.owner_email || 'Sem email'}
+                          {s.phone && <span className="ml-2 text-zinc-600">· {s.phone}</span>}
+                        </p>
                       </div>
 
                       {/* Wix status badges */}
@@ -363,6 +367,7 @@ export default function AdminInjectPage() {
                     {/* Expanded details */}
                     {expanded === s.id && (
                       <div className="border-t border-zinc-800 px-3 py-3 space-y-1.5 text-xs font-mono text-zinc-400">
+                        <div><span className="text-zinc-500">Telefone:</span> {s.phone ? s.phone : <span className="text-zinc-600 italic">vazio</span>}</div>
                         <div><span className="text-zinc-500">Site ID:</span> {s.wix_site_id && s.wix_site_id !== 'pending' ? s.wix_site_id : <span className="text-zinc-600 italic">vazio</span>}</div>
                         <div><span className="text-zinc-500">Senha:</span> {s.password ? s.password : <span className="text-zinc-600 italic">vazio</span>}</div>
                         <div><span className="text-zinc-500">API Key:</span> {s.wix_api_key ? `${s.wix_api_key.slice(0, 12)}...` : <span className="text-zinc-600 italic">vazio</span>}</div>
