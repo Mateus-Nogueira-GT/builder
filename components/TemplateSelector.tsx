@@ -5,7 +5,7 @@ import { Check } from "lucide-react";
 
 export interface TemplateOption {
   id: string;
-  siteId: string;
+  installUrl: string;
   name: string;
   previewUrl: string;
 }
@@ -13,13 +13,15 @@ export interface TemplateOption {
 export const TEMPLATES: TemplateOption[] = [
   {
     id: "template-1",
-    siteId: "c208eaf8-8ed3-4ad2-947a-db65813006c2",
+    installUrl:
+      "https://manage.wix.com/marketplace/redemption?id=eyJpdiI6IjVlNDJkYzQ0NTMyZTQ0MDc3NDFlNTYxYzIzNmNiOTllIiwiZW5jcnlwdGVkRGF0YSI6ImEwNzE1ZDU4YzQ3NzFmMzFkYjc0NGU0YWFlZDU4Nzk4OWYyNmVlZWYzYzQ4MWMyYTEyZGQyNzQ4ZTRhYmZlZjFhNzBhNDEwMTQ1M2FjYmQ0NjQ3ZWVmYmU1YTU0OTU1ZjcwMjBkNGQzZjhjODY3OGNmZmJjZjY2MDUyYzE2YTQ5MDIyYWFiYjBmMTQ4YTFmNDc3MzA4OTEzMjIzYTkxZGU3NGEzZDQ4NDg1OWY5MGU4NDM2YzdkMjliZjY2NjQ5ZTAwM2IzM2ZkYWMxZWZhNzUzOTNiZmQ4YWY0ODg0N2E1NWVhYTU3NGNlOGM1N2I1YmZiMzlmMzZkNTFmNTRlNTdmZTMzOWQxMjE3NWFjZmVhZTgxNTA0YmQ5MmUwZGZiOCJ9",
     name: "Modelo 01",
     previewUrl: "/templates/template-01.jpeg",
   },
   {
     id: "template-2",
-    siteId: "962b66f7-c9d1-4ba7-be05-354465e71d40",
+    installUrl:
+      "https://manage.wix.com/marketplace/redemption?id=eyJpdiI6ImViYmZmNmZkZDQ0OGNmY2NhZDQyNjMyMTA5OTBkNTI2IiwiZW5jcnlwdGVkRGF0YSI6IjIwNzk5NmYxODQxYWFiMWJhMDQzMDZkOGQ3OWY4MjRjYWVmMjI4ODc2ZWNlMjUwNDQwNWQ0N2RiZDc2YzRhODFkZTI3ODcwYjc1MTIzNjE0M2I4OWY1ZGI4N2QwZGE4MTg2M2QzNWFhNzY2M2RkZTNmZjNhY2ZhMmNhY2M5NmNlNTUxZmUyYzJhMGExNmRhMzIxZjY1Yjg4NjE2OTgyZjVjYTIyYjBkNTQ3NTM0MDM4MjE1YmNmZTkzN2NhYjU5MGJlY2RhMDIxY2I5MmY1NmIzYTc2ZTJkNTE2ZTM3MGQxODRlZTBmMDdjN2MwYmMyODA5MTA0NmUyMDE2YzZlZTc5YTgyNDY5NGUyZWY4NDg5ZmNhNDIyMzUxYzVhOTNiNSJ9",
     name: "Modelo 02",
     previewUrl: "/templates/template-02.jpeg",
   },
@@ -34,7 +36,7 @@ export function TemplateSelector({ selected, onSelect }: TemplateSelectorProps) 
   return (
     <div className="grid grid-cols-2 gap-4">
       {TEMPLATES.map((template) => {
-        const isSelected = selected === template.siteId;
+        const isSelected = selected === template.id;
         return (
           <button
             key={template.id}

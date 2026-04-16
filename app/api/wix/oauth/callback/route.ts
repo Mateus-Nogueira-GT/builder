@@ -3,72 +3,62 @@ import { supabase } from "@/lib/supabase";
 import { getOAuthToken } from "@/lib/wixOAuth";
 
 /**
- * Wix OAuth Callback
+ * Wix OAuth Callback — external install flow
  *
- * After the user installs the app via the Wix installer, Wix redirects
- * here with `instanceId` (and optionally `code` / `state`).
+ * Wix redirects here with `instanceId` after the user installs the app.
+ * The `state` param (userId|storeId) is ours — we embedded it in the
+ * postInstallationUrl, so we don't depend on Wix echoing it back.
  *
- * We use client_credentials + instance_id to get an access token,
- * then update the pending store in Supabase so the polling on the
- * original tab detects the connection.
+ * We exchange instanceId for an access token and update the exact store.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const instanceId = searchParams.get("instanceId");
+  const state = searchParams.get("state") ?? "";
 
-  console.log("[OAuth Callback] instanceId:", instanceId);
+  console.log("[OAuth Callback] instanceId:", instanceId, "| state:", state);
 
   if (!instanceId) {
-    return new NextResponse(closePage("Erro: instanceId não recebido."), {
-      headers: { "Content-Type": "text/html" },
-    });
+    return NextResponse.redirect(
+      new URL("/onboarding/install-template?error=no_instance", request.url)
+    );
+  }
+
+  // Parse state: "userId|storeId"
+  const [, storeId] = state.split("|");
+
+  if (!storeId) {
+    console.warn("[OAuth Callback] state inválido, não foi possível identificar a store:", state);
+    return NextResponse.redirect(
+      new URL("/onboarding/install-template?error=invalid_state", request.url)
+    );
   }
 
   try {
-    // Get access token using client_credentials (new OAuth flow)
+    // Exchange instanceId for an access token
     const accessToken = await getOAuthToken(instanceId);
 
-    // Find the most recent pending store and update it
-    const { data: pendingStore } = await supabase
+    // Update the specific store — no guessing, no race conditions
+    const { error } = await supabase
       .from("stores")
-      .select("id")
-      .eq("wix_site_id", "pending")
-      .eq("connection_method", "oauth")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
+      .update({
+        wix_instance_id: instanceId,
+        wix_api_key: accessToken,
+      })
+      .eq("id", storeId);
 
-    if (pendingStore) {
-      await supabase
-        .from("stores")
-        .update({
-          wix_instance_id: instanceId,
-          wix_api_key: accessToken,
-        })
-        .eq("id", pendingStore.id);
-
-      console.log(`[OAuth Callback] Updated store ${pendingStore.id} with instanceId=${instanceId}`);
+    if (error) {
+      console.error(`[OAuth Callback] Falha ao atualizar store ${storeId}:`, error.message);
     } else {
-      console.warn("[OAuth Callback] No pending store found, webhook will handle it");
+      console.log(`[OAuth Callback] Store ${storeId} atualizada com instanceId=${instanceId}`);
     }
 
-    // Close this tab — the original tab is polling and will detect the connection
-    return new NextResponse(closePage("App conectado com sucesso! Pode fechar esta aba."), {
-      headers: { "Content-Type": "text/html" },
-    });
+    // Limpa dados de sessão do onboarding e redireciona para o dashboard
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   } catch (err) {
     console.error("[OAuth Callback] Error:", err);
-    return new NextResponse(closePage("Erro ao conectar. Volte para a aba anterior e tente novamente."), {
-      headers: { "Content-Type": "text/html" },
-    });
+    return NextResponse.redirect(
+      new URL("/onboarding/install-template?error=connect_failed", request.url)
+    );
   }
-}
-
-function closePage(message: string): string {
-  return `<!DOCTYPE html>
-<html><head><title>Kit Store Builder</title>
-<style>body{background:#09090b;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-.box{text-align:center;max-width:400px}.ok{color:#10b981;font-size:2rem;margin-bottom:1rem}</style></head>
-<body><div class="box"><div class="ok">✓</div><p>${message}</p></div>
-<script>setTimeout(()=>window.close(),2000)</script></body></html>`;
 }

@@ -28,6 +28,7 @@ function OnboardingContent() {
     setSubmitting(true);
 
     try {
+      // 1. Cria a store pendente no banco
       const res = await fetch("/api/stores", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -45,8 +46,16 @@ function OnboardingContent() {
         return;
       }
 
-      const params = new URLSearchParams({ name: storeName });
-      router.push(`/onboarding/success?${params.toString()}`);
+      // 2. Salva dados da sessão para a próxima etapa recuperar
+      const storeId = data?.id ?? data?.[0]?.id ?? null;
+      if (storeId) {
+        sessionStorage.setItem("pending_store_id", String(storeId));
+      }
+      sessionStorage.setItem("pending_store_name", storeName);
+      sessionStorage.setItem("pending_template_url", selectedTemplate.installUrl);
+
+      // 3. Vai para a página intermediária de instalação do template
+      router.push("/onboarding/install-template");
     } catch (err) {
       console.error("[ONBOARDING] error:", err);
       toast.error("Erro ao registrar loja");
@@ -107,7 +116,7 @@ function OnboardingContent() {
               <p className="text-sm text-zinc-400">
                 Selecione o modelo visual da sua loja. Todos já vêm com os produtos cadastrados.
               </p>
-              <TemplateSelector selected={selectedTemplate?.siteId || null} onSelect={setSelectedTemplate} />
+              <TemplateSelector selected={selectedTemplate?.id || null} onSelect={setSelectedTemplate} />
               <div className="flex justify-between">
                 <Button variant="outline" onClick={() => setStep(0)} className="border-zinc-700 text-zinc-300">
                   <ArrowLeft className="mr-2 h-4 w-4" /> Voltar

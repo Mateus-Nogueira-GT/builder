@@ -1,10 +1,8 @@
-const CLASSIC_TEMPLATE_ID = "9b6ae83a-02a6-4c47-8816-bade636b412e";
-
-export const TEMPLATE_MAP: Record<string, string> = {
-  classic: CLASSIC_TEMPLATE_ID,
-  modern: CLASSIC_TEMPLATE_ID, // placeholder — update when second Wix template is created
+// Templates são instalados diretamente pelo usuário via Wix Marketplace.
+// As URLs abaixo são os links de redemption gerados pelo "shared template file".
+export const TEMPLATE_INSTALL_URLS: Record<string, string> = {
+  "template-1":
+    "https://manage.wix.com/marketplace/redemption?id=eyJpdiI6IjVlNDJkYzQ0NTMyZTQ0MDc3NDFlNTYxYzIzNmNiOTllIiwiZW5jcnlwdGVkRGF0YSI6ImEwNzE1ZDU4YzQ3NzFmMzFkYjc0NGU0YWFlZDU4Nzk4OWYyNmVlZWYzYzQ4MWMyYTEyZGQyNzQ4ZTRhYmZlZjFhNzBhNDEwMTQ1M2FjYmQ0NjQ3ZWVmYmU1YTU0OTU1ZjcwMjBkNGQzZjhjODY3OGNmZmJjZjY2MDUyYzE2YTQ5MDIyYWFiYjBmMTQ4YTFmNDc3MzA4OTEzMjIzYTkxZGU3NGEzZDQ4NDg1OWY5MGU4NDM2YzdkMjliZjY2NjQ5ZTAwM2IzM2ZkYWMxZWZhNzUzOTNiZmQ4YWY0ODg0N2E1NWVhYTU3NGNlOGM1N2I1YmZiMzlmMzZkNTFmNTRlNTdmZTMzOWQxMjE3NWFjZmVhZTgxNTA0YmQ5MmUwZGZiOCJ9",
+  "template-2":
+    "https://manage.wix.com/marketplace/redemption?id=eyJpdiI6ImViYmZmNmZkZDQ0OGNmY2NhZDQyNjMyMTA5OTBkNTI2IiwiZW5jcnlwdGVkRGF0YSI6IjIwNzk5NmYxODQxYWFiMWJhMDQzMDZkOGQ3OWY4MjRjYWVmMjI4ODc2ZWNlMjUwNDQwNWQ0N2RiZDc2YzRhODFkZTI3ODcwYjc1MTIzNjE0M2I4OWY1ZGI4N2QwZGE4MTg2M2QzNWFhNzY2M2RkZTNmZjNhY2ZhMmNhY2M5NmNlNTUxZmUyYzJhMGExNmRhMzIxZjY1Yjg4NjE2OTgyZjVjYTIyYjBkNTQ3NTM0MDM4MjE1YmNmZTkzN2NhYjU5MGJlY2RhMDIxY2I5MmY1NmIzYTc2ZTJkNTE2ZTM3MGQxODRlZTBmMDdjN2MwYmMyODA5MTA0NmUyMDE2YzZlZTc5YTgyNDY5NGUyZWY4NDg5ZmNhNDIyMzUxYzVhOTNiNSJ9",
 };
-
-export function getTemplateId(layoutType: string): string {
-  return TEMPLATE_MAP[layoutType] || CLASSIC_TEMPLATE_ID;
-}
