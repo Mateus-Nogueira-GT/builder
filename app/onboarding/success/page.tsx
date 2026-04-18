@@ -1,67 +1,107 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
-import { CheckCircle, PlayCircle, HeadphonesIcon } from "lucide-react";
+import { Suspense, useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { CheckCircle, ExternalLink, LayoutDashboard, Loader2 } from "lucide-react";
 
 function SuccessContent() {
-  const [storeName, setStoreName] = useState("");
+  const searchParams = useSearchParams();
+  const name = searchParams.get("name") || "Sua Loja";
+  const dashboard = searchParams.get("dashboard") || "";
+  const storeId = searchParams.get("storeId") || "";
+  const siteId = searchParams.get("siteId") || "";
+  const [publicUrl, setPublicUrl] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(true);
 
   useEffect(() => {
-    const name = sessionStorage.getItem("pending_store_name") || "";
-    setStoreName(name);
-    sessionStorage.removeItem("pending_store_id");
-    sessionStorage.removeItem("pending_store_name");
-    sessionStorage.removeItem("pending_template_url");
-  }, []);
+    if (!siteId || !storeId) {
+      setPublishing(false);
+      return;
+    }
+
+    fetch("/api/wix/publish-site", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storeId, siteId }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.publicUrl) setPublicUrl(data.publicUrl);
+      })
+      .catch(() => {})
+      .finally(() => setPublishing(false));
+  }, [siteId, storeId]);
+
+  const mainUrl = publicUrl || dashboard;
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center px-4 py-12">
-      <div className="mx-auto max-w-lg text-center space-y-8">
-        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/10">
-          <CheckCircle className="h-10 w-10 text-emerald-500" />
-        </div>
-
-        <div className="space-y-3">
-          <h1 className="text-3xl font-bold text-white">Parabéns!</h1>
-          {storeName && (
-            <p className="text-emerald-400 font-medium">{storeName}</p>
-          )}
-          <p className="text-zinc-400 text-sm leading-relaxed">
-            Você acaba de receber sua loja pré-montada na Plataforma Wix.
-            Assista à aula abaixo para configurar sua loja com todos os recursos
-            que a Plataforma Wix te oferece.
-          </p>
-        </div>
-
-        <a
-          href="https://www.wix.com/academiadenegocios/post/criando-uma-loja-virtual-do-zero"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 text-left hover:bg-emerald-500/20 transition-colors"
-        >
-          <PlayCircle className="h-6 w-6 text-emerald-400 shrink-0" />
-          <div>
-            <p className="text-sm font-semibold text-emerald-300">Assistir aula</p>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              Criando uma loja virtual do zero — Wix Academia de Negócios
-            </p>
+    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center px-4">
+      <div className="mx-auto max-w-2xl space-y-6">
+        <div className="text-center space-y-4">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10">
+            <CheckCircle className="h-8 w-8 text-emerald-500" />
           </div>
-        </a>
+          <h2 className="text-2xl font-bold text-white">Loja criada com sucesso!</h2>
+          <p className="text-zinc-400 text-sm">
+            Sua loja <strong className="text-white">{name}</strong> foi criada com todos os produtos.
+          </p>
+          {publishing && (
+            <div className="flex items-center justify-center gap-2 text-xs text-zinc-500">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Publicando sua loja...
+            </div>
+          )}
+        </div>
 
         <div className="space-y-3">
-          <p className="text-zinc-500 text-xs">Se precisar de mais ajuda ou suporte acesse:</p>
+          <div className="relative w-full overflow-hidden rounded-xl border border-zinc-800" style={{ paddingBottom: "56.25%" }}>
+            <iframe
+              src="https://www.loom.com/embed/8d0a599ab3fb42a9ad5fad00794108cf?hide_owner=true&hide_share=true&hide_title=true&hideEmbedTopBar=true"
+              allowFullScreen
+              className="absolute inset-0 h-full w-full"
+              style={{ border: "none" }}
+            />
+          </div>
           <a
-            href="https://support.wix.com/pt"
+            href="https://www.loom.com/share/8d0a599ab3fb42a9ad5fad00794108cf"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-4 text-left hover:border-zinc-700 transition-colors"
+            className="flex items-center justify-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
           >
-            <HeadphonesIcon className="h-5 w-5 text-zinc-400 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-zinc-300">Suporte Wix</p>
-              <p className="text-xs text-zinc-600 mt-0.5">support.wix.com/pt</p>
-            </div>
+            <ExternalLink className="h-3 w-3" />
+            Salvar vídeo para assistir depois
           </a>
+        </div>
+
+        <div className="space-y-3">
+          {publishing ? (
+            <div className="flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-800 px-6 py-3 text-sm text-zinc-400">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Gerando link da loja...
+            </div>
+          ) : (
+            <a
+              href={mainUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-6 py-3 text-sm font-bold text-black hover:bg-emerald-400 transition-colors"
+            >
+              <ExternalLink className="h-4 w-4" />
+              {publicUrl ? "Acessar Minha Loja" : "Abrir Painel da Loja"}
+            </a>
+          )}
+
+          {publicUrl && dashboard && (
+            <a
+              href={dashboard}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-700 px-6 py-3 text-sm font-medium text-zinc-300 hover:border-zinc-500 transition-colors"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              Painel de Administração
+            </a>
+          )}
         </div>
       </div>
     </div>
@@ -70,7 +110,7 @@ function SuccessContent() {
 
 export default function SuccessPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-zinc-950" />}>
+    <Suspense fallback={<div className="min-h-screen bg-zinc-950 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
       <SuccessContent />
     </Suspense>
   );
