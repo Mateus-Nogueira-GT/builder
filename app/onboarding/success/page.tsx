@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle, ExternalLink, LayoutDashboard, Loader2 } from "lucide-react";
+import { CheckCircle, ExternalLink, LayoutDashboard, Loader2, PlayCircle, HeadphonesIcon } from "lucide-react";
 
 function SuccessContent() {
   const searchParams = useSearchParams();
@@ -41,9 +41,11 @@ function SuccessContent() {
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10">
             <CheckCircle className="h-8 w-8 text-emerald-500" />
           </div>
-          <h2 className="text-2xl font-bold text-white">Loja criada com sucesso!</h2>
-          <p className="text-zinc-400 text-sm">
-            Sua loja <strong className="text-white">{name}</strong> foi criada com todos os produtos.
+          <h2 className="text-2xl font-bold text-white">Parabéns!</h2>
+          <p className="text-zinc-400 text-sm leading-relaxed">
+            Você acaba de receber sua loja pré-montada na Plataforma Wix.
+            Assista a aula abaixo para configurar sua loja com todos os recursos
+            que a Plataforma Wix te oferece.
           </p>
           {publishing && (
             <div className="flex items-center justify-center gap-2 text-xs text-zinc-500">
@@ -102,6 +104,36 @@ function SuccessContent() {
               Painel de Administração
             </a>
           )}
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-zinc-500 text-xs">Se precisar de mais ajuda ou suporte acesse:</p>
+          <a
+            href="https://www.wix.com/academiadenegocios/post/criando-uma-loja-virtual-do-zero"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 text-left hover:bg-emerald-500/20 transition-colors"
+          >
+            <PlayCircle className="h-6 w-6 text-emerald-400 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-emerald-300">Assistir aula</p>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Criando uma loja virtual do zero — Wix Academia de Negócios
+              </p>
+            </div>
+          </a>
+          <a
+            href="https://support.wix.com/pt"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-4 text-left hover:border-zinc-700 transition-colors"
+          >
+            <HeadphonesIcon className="h-5 w-5 text-zinc-400 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-zinc-300">Suporte Wix</p>
+              <p className="text-xs text-zinc-600 mt-0.5">support.wix.com/pt</p>
+            </div>
+          </a>
         </div>
       </div>
     </div>
