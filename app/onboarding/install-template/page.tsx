@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { StepIndicator } from "@/components/StepIndicator";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +9,6 @@ import {
   Shirt,
   ExternalLink,
   CheckCircle2,
-  Loader2,
   LayoutTemplate,
 } from "lucide-react";
 
@@ -18,25 +16,13 @@ const FLOW_STEPS = [
   { label: "Nome da Loja" },
   { label: "Template" },
   { label: "Instalar no Wix" },
-  { label: "Conectar App" },
 ];
 
 function InstallTemplateContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [templateUrl, setTemplateUrl] = useState<string | null>(null);
-  const [storeId, setStoreId] = useState<string | null>(null);
   const [storeName, setStoreName] = useState<string>("");
   const [opened, setOpened] = useState(false);
-  const [connecting, setConnecting] = useState(false);
-
-  useEffect(() => {
-    // Exibe erro de callback do OAuth se houver
-    const error = searchParams.get("error");
-    if (error) {
-      toast.error("Erro ao conectar o app. Tente novamente.");
-    }
-  }, [searchParams]);
 
   useEffect(() => {
     const url = sessionStorage.getItem("pending_template_url");
@@ -50,7 +36,6 @@ function InstallTemplateContent() {
     }
 
     setTemplateUrl(url);
-    setStoreId(id);
     setStoreName(name);
   }, [router]);
 
@@ -59,27 +44,8 @@ function InstallTemplateContent() {
     setOpened(true);
   };
 
-  const handleConnect = async () => {
-    if (!storeId) return;
-    setConnecting(true);
-
-    try {
-      const res = await fetch(`/api/wix/oauth?storeId=${storeId}`);
-      const data = await res.json();
-
-      if (!res.ok || !data.authUrl) {
-        toast.error(data.error || "Erro ao gerar URL de autorização");
-        setConnecting(false);
-        return;
-      }
-
-      // Redireciona para o Wix app-installer na mesma aba
-      window.location.href = data.authUrl;
-    } catch (err) {
-      console.error("[INSTALL-TEMPLATE] connect error:", err);
-      toast.error("Erro ao conectar. Tente novamente.");
-      setConnecting(false);
-    }
+  const handleContinue = () => {
+    router.push("/onboarding/success");
   };
 
   if (!templateUrl) {
@@ -132,7 +98,7 @@ function InstallTemplateContent() {
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold">
                   4
                 </span>
-                Clique em <strong className="text-white">"Já instalei, continuar"</strong> para conectar sua loja
+                Clique em <strong className="text-white">"Já instalei, continuar"</strong> para finalizar
               </li>
             </ol>
 
@@ -148,21 +114,11 @@ function InstallTemplateContent() {
 
               {opened && (
                 <Button
-                  onClick={handleConnect}
-                  disabled={connecting}
+                  onClick={handleContinue}
                   className="w-full bg-emerald-500 text-black font-bold hover:bg-emerald-400"
                 >
-                  {connecting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Conectando...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                      Já instalei, continuar
-                    </>
-                  )}
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Já instalei, continuar
                 </Button>
               )}
             </div>

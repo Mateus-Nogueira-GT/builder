@@ -28,13 +28,13 @@ function LoginForm() {
         email,
         password,
         redirect: false,
-        callbackUrl,
       });
 
       if (result?.error) {
         toast.error("Email ou senha incorretos");
-      } else if (result?.url) {
-        window.location.href = result.url;
+      } else {
+        // Login de conta existente → vai direto para a página de obrigado
+        window.location.href = "/onboarding/success";
       }
     } catch {
       toast.error("Erro ao fazer login");
