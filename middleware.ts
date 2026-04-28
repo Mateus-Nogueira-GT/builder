@@ -18,6 +18,7 @@ export async function middleware(request: NextRequest) {
         '/hero-image',
         '/preview',
         '/publishing',
+        '/atualizar-tamanhos',
     ];
 
     const isProtected = protectedPaths.some((path) =>
@@ -46,5 +47,6 @@ export const config = {
         '/hero-image/:path*',
         '/preview/:path*',
         '/publishing/:path*',
+        '/atualizar-tamanhos/:path*',
     ],
 };
