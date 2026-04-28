@@ -3,6 +3,7 @@ import { getToken } from "next-auth/jwt";
 import { supabase } from "@/lib/supabase";
 import { queryWixProductsCount } from "@/lib/sizeMigration";
 import { resolveAuthHeader } from "@/lib/wix";
+import { fetchSiteIdFromInstance } from "@/lib/wixOAuth";
 
 const WIX_ADMIN_API_KEY = process.env.WIX_ADMIN_API_KEY ?? "";
 const BATCH_SIZE = 30;
@@ -41,18 +42,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Loja não encontrada" }, { status: 404 });
     }
 
-    if (!store.wix_site_id || store.wix_site_id === "pending") {
-      return NextResponse.json(
-        { error: "Loja ainda não tem site Wix conectado" },
-        { status: 400 }
-      );
-    }
-
     if (!store.wix_instance_id) {
       return NextResponse.json(
         { error: "Loja não tem autorização OAuth — conecte primeiro" },
         { status: 400 }
       );
+    }
+
+    // Se siteId está faltando ou é "pending", tenta buscar agora via Wix Apps API
+    let siteId = store.wix_site_id;
+    if (!siteId || siteId === "pending") {
+      console.log(`[atualizar-tamanhos/start] siteId faltando, buscando via Wix Apps API | instanceId=${store.wix_instance_id}`);
+      const fetched = await fetchSiteIdFromInstance(store.wix_instance_id);
+      if (!fetched) {
+        return NextResponse.json(
+          {
+            error:
+              "Não foi possível identificar o site Wix associado. Verifique se autorizou um site, não a conta inteira.",
+            instanceId: store.wix_instance_id,
+          },
+          { status: 502 }
+        );
+      }
+      siteId = fetched;
+      // Salva pra não precisar buscar de novo
+      await supabase
+        .from("stores")
+        .update({ wix_site_id: siteId })
+        .eq("id", storeId);
+      console.log(`[atualizar-tamanhos/start] siteId salvo: ${siteId}`);
     }
 
     // Verifica se já existe job rodando pra mesma loja — evita duplicação
@@ -76,19 +94,19 @@ export async function POST(request: Request) {
     // Conta total de produtos na loja Wix
     let totalProducts: number;
     try {
-      totalProducts = await queryWixProductsCount(authHeader, store.wix_site_id);
-      console.log(`[atualizar-tamanhos/start] siteId=${store.wix_site_id} totalProducts=${totalProducts}`);
+      totalProducts = await queryWixProductsCount(authHeader, siteId);
+      console.log(`[atualizar-tamanhos/start] siteId=${siteId} totalProducts=${totalProducts}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(
-        `[atualizar-tamanhos/start] erro ao contar produtos | storeId=${storeId} siteId=${store.wix_site_id}:`,
+        `[atualizar-tamanhos/start] erro ao contar produtos | storeId=${storeId} siteId=${siteId}:`,
         msg
       );
       return NextResponse.json(
         {
           error: "Falha ao acessar produtos da loja Wix",
           detail: msg,
-          siteId: store.wix_site_id,
+          siteId,
         },
         { status: 502 }
       );
@@ -99,7 +117,7 @@ export async function POST(request: Request) {
       .from("size_update_jobs")
       .insert({
         store_id: storeId,
-        site_id: store.wix_site_id,
+        site_id: siteId,
         owner_email: token.email,
         status: "running",
         total_products: totalProducts,

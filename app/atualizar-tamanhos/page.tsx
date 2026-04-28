@@ -50,14 +50,9 @@ export default function AtualizarTamanhosPage() {
       try {
         const res = await fetch("/api/stores");
         const data = await res.json();
-        // Aceita lojas com wix_instance_id (foram autorizadas via OAuth)
+        // Aceita lojas que passaram pelo OAuth (têm wix_instance_id)
         const valid = Array.isArray(data)
-          ? data.filter(
-              (s: Store) =>
-                s.wix_instance_id &&
-                s.wix_site_id &&
-                s.wix_site_id !== "pending"
-            )
+          ? data.filter((s: Store) => Boolean(s.wix_instance_id))
           : [];
         setStores(valid);
       } catch {

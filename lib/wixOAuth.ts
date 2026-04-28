@@ -80,33 +80,69 @@ export function invalidateToken(instanceId: string): void {
 /**
  * Busca o metaSiteId associado a um instanceId via Wix Apps API.
  * Útil após OAuth callback para descobrir em qual site o app foi instalado.
+ *
+ * Tenta múltiplos endpoints/formatos de header pra ser mais robusto.
  */
 export async function fetchSiteIdFromInstance(instanceId: string): Promise<string | null> {
-  try {
-    const accessToken = await getOAuthToken(instanceId);
-    const res = await fetch("https://www.wixapis.com/apps/v1/instance", {
-      method: "GET",
-      headers: {
-        Authorization: accessToken,
-        "Content-Type": "application/json",
-      },
-    });
+  const accessToken = await getOAuthToken(instanceId);
 
-    if (!res.ok) {
+  // Tenta o endpoint principal com diferentes variações de header
+  const attempts: Array<{ url: string; auth: string }> = [
+    { url: "https://www.wixapis.com/apps/v1/instance", auth: accessToken },
+    { url: "https://www.wixapis.com/apps/v1/instance", auth: `Bearer ${accessToken}` },
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      const res = await fetch(attempt.url, {
+        method: "GET",
+        headers: {
+          Authorization: attempt.auth,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const bodyText = await res.text().catch(() => "");
+
+      if (!res.ok) {
+        console.warn(
+          `[WixOAuth] fetchSiteIdFromInstance ${attempt.url} status=${res.status} authPrefix=${attempt.auth.startsWith("Bearer") ? "Bearer" : "raw"} body=${bodyText.slice(0, 300)}`
+        );
+        continue;
+      }
+
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(bodyText);
+      } catch {
+        console.warn(`[WixOAuth] fetchSiteIdFromInstance: resposta não é JSON: ${bodyText.slice(0, 200)}`);
+        continue;
+      }
+
+      console.log(`[WixOAuth] fetchSiteIdFromInstance success | response=`, JSON.stringify(data).slice(0, 500));
+
+      // Tenta múltiplos paths conhecidos
+      const inst = (data.instance ?? data) as Record<string, unknown>;
+      const site = (inst?.site ?? data.site) as Record<string, unknown> | undefined;
+      const siteId =
+        (site?.siteId as string) ??
+        (site?.metaSiteId as string) ??
+        (inst?.siteId as string) ??
+        (data.siteId as string) ??
+        (data.metaSiteId as string) ??
+        null;
+
+      if (siteId) return siteId;
+
       console.warn(
-        `[WixOAuth] fetchSiteIdFromInstance falhou: ${res.status} ${await res.text().catch(() => "")}`
+        `[WixOAuth] fetchSiteIdFromInstance: response OK mas siteId não encontrado | data=${JSON.stringify(data).slice(0, 500)}`
       );
-      return null;
+    } catch (err) {
+      console.error(`[WixOAuth] fetchSiteIdFromInstance error em ${attempt.url}:`, err);
     }
-
-    const data = await res.json();
-    // Wix retorna site.siteId (metaSiteId) na estrutura da instância
-    const siteId = data?.site?.siteId ?? data?.instance?.site?.siteId ?? null;
-    return siteId;
-  } catch (err) {
-    console.error("[WixOAuth] fetchSiteIdFromInstance error:", err);
-    return null;
   }
+
+  return null;
 }
 
 /**
