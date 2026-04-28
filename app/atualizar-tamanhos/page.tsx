@@ -11,6 +11,7 @@ import {
   XCircle,
   RefreshCw,
   Sparkles,
+  LinkIcon,
 } from "lucide-react";
 
 interface Store {
@@ -18,6 +19,7 @@ interface Store {
   name: string;
   wix_site_id: string | null;
   wix_site_url: string | null;
+  wix_instance_id: string | null;
 }
 
 interface JobStatus {
@@ -40,6 +42,7 @@ export default function AtualizarTamanhosPage() {
   const [loadingStores, setLoadingStores] = useState(true);
   const [activeJob, setActiveJob] = useState<JobStatus | null>(null);
   const [starting, setStarting] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
   // Carrega lojas do usuário (middleware já garante que está autenticado)
   useEffect(() => {
@@ -47,8 +50,14 @@ export default function AtualizarTamanhosPage() {
       try {
         const res = await fetch("/api/stores");
         const data = await res.json();
+        // Aceita lojas com wix_instance_id (foram autorizadas via OAuth)
         const valid = Array.isArray(data)
-          ? data.filter((s: Store) => s.wix_site_id && s.wix_site_id !== "pending")
+          ? data.filter(
+              (s: Store) =>
+                s.wix_instance_id &&
+                s.wix_site_id &&
+                s.wix_site_id !== "pending"
+            )
           : [];
         setStores(valid);
       } catch {
@@ -59,6 +68,30 @@ export default function AtualizarTamanhosPage() {
     };
     fetchStores();
   }, []);
+
+  const handleConnectWix = async () => {
+    setConnecting(true);
+    try {
+      const res = await fetch("/api/atualizar-tamanhos/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.authUrl) {
+        toast.error(data.error || "Erro ao conectar com o Wix");
+        setConnecting(false);
+        return;
+      }
+
+      // Redireciona pro app-installer do Wix
+      window.location.href = data.authUrl;
+    } catch (err) {
+      console.error("[atualizar-tamanhos] connect error:", err);
+      toast.error("Erro ao conectar com o Wix");
+      setConnecting(false);
+    }
+  };
 
   const pollStatus = useCallback(async (jobId: string) => {
     try {
@@ -211,9 +244,36 @@ export default function AtualizarTamanhosPage() {
           <>
             {stores.length === 0 ? (
               <Card className="border-zinc-800 bg-zinc-900">
-                <CardContent className="pt-6 text-center text-zinc-400 text-sm">
-                  Nenhuma loja conectada encontrada na sua conta. Se você acha
-                  que isso é um erro, entre em contato com nosso suporte.
+                <CardHeader>
+                  <CardTitle className="text-white text-lg flex items-center gap-2">
+                    <LinkIcon className="h-5 w-5 text-emerald-500" />
+                    Conecte sua loja Wix
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <p className="text-zinc-400 text-sm leading-relaxed">
+                    Para atualizar os tamanhos dos produtos, primeiro precisamos
+                    da sua autorização para acessar sua loja. Você será
+                    redirecionado para o Wix, vai escolher a sua loja e clicar
+                    em "Continuar". É um processo rápido — feito uma única vez.
+                  </p>
+                  <Button
+                    onClick={handleConnectWix}
+                    disabled={connecting}
+                    className="w-full bg-emerald-500 text-black font-bold hover:bg-emerald-400"
+                  >
+                    {connecting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Redirecionando...
+                      </>
+                    ) : (
+                      <>
+                        <LinkIcon className="mr-2 h-4 w-4" />
+                        Conectar minha loja Wix
+                      </>
+                    )}
+                  </Button>
                 </CardContent>
               </Card>
             ) : (

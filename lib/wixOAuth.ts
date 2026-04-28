@@ -78,6 +78,38 @@ export function invalidateToken(instanceId: string): void {
 }
 
 /**
+ * Busca o metaSiteId associado a um instanceId via Wix Apps API.
+ * Útil após OAuth callback para descobrir em qual site o app foi instalado.
+ */
+export async function fetchSiteIdFromInstance(instanceId: string): Promise<string | null> {
+  try {
+    const accessToken = await getOAuthToken(instanceId);
+    const res = await fetch("https://www.wixapis.com/apps/v1/instance", {
+      method: "GET",
+      headers: {
+        Authorization: accessToken,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      console.warn(
+        `[WixOAuth] fetchSiteIdFromInstance falhou: ${res.status} ${await res.text().catch(() => "")}`
+      );
+      return null;
+    }
+
+    const data = await res.json();
+    // Wix retorna site.siteId (metaSiteId) na estrutura da instância
+    const siteId = data?.site?.siteId ?? data?.instance?.site?.siteId ?? null;
+    return siteId;
+  } catch (err) {
+    console.error("[WixOAuth] fetchSiteIdFromInstance error:", err);
+    return null;
+  }
+}
+
+/**
  * Installs our Wix app on a site and returns the instanceId.
  * Uses the admin API key (account-level operation).
  * Falls back to the metaSiteId if installation doesn't return an instanceId.

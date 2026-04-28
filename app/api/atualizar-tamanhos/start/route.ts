@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { supabase } from "@/lib/supabase";
 import { queryWixProductsCount } from "@/lib/sizeMigration";
+import { resolveAuthHeader } from "@/lib/wix";
 
-const WIX_ADMIN_API_KEY = process.env.WIX_ADMIN_API_KEY!;
+const WIX_ADMIN_API_KEY = process.env.WIX_ADMIN_API_KEY ?? "";
 const BATCH_SIZE = 30;
 
 /**
@@ -28,10 +29,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "storeId é obrigatório" }, { status: 400 });
     }
 
-    // Confirma que a loja pertence ao usuário e tem wix_site_id válido
+    // Confirma que a loja pertence ao usuário
     const { data: store, error: storeErr } = await supabase
       .from("stores")
-      .select("id, wix_site_id, owner_email")
+      .select("id, wix_site_id, wix_instance_id, owner_email")
       .eq("id", storeId)
       .eq("owner_email", token.email)
       .single();
@@ -43,6 +44,13 @@ export async function POST(request: Request) {
     if (!store.wix_site_id || store.wix_site_id === "pending") {
       return NextResponse.json(
         { error: "Loja ainda não tem site Wix conectado" },
+        { status: 400 }
+      );
+    }
+
+    if (!store.wix_instance_id) {
+      return NextResponse.json(
+        { error: "Loja não tem autorização OAuth — conecte primeiro" },
         { status: 400 }
       );
     }
@@ -62,14 +70,26 @@ export async function POST(request: Request) {
       });
     }
 
+    // Resolve auth: prioriza OAuth token (do instanceId), com fallback pra admin key
+    const authHeader = await resolveAuthHeader(WIX_ADMIN_API_KEY, store.wix_instance_id);
+
     // Conta total de produtos na loja Wix
     let totalProducts: number;
     try {
-      totalProducts = await queryWixProductsCount(WIX_ADMIN_API_KEY, store.wix_site_id);
+      totalProducts = await queryWixProductsCount(authHeader, store.wix_site_id);
+      console.log(`[atualizar-tamanhos/start] siteId=${store.wix_site_id} totalProducts=${totalProducts}`);
     } catch (err) {
-      console.error("[atualizar-tamanhos/start] erro ao contar produtos:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[atualizar-tamanhos/start] erro ao contar produtos | storeId=${storeId} siteId=${store.wix_site_id}:`,
+        msg
+      );
       return NextResponse.json(
-        { error: "Falha ao acessar produtos da loja Wix" },
+        {
+          error: "Falha ao acessar produtos da loja Wix",
+          detail: msg,
+          siteId: store.wix_site_id,
+        },
         { status: 502 }
       );
     }

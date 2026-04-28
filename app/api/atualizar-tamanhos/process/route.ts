@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { processSizeBatch } from "@/lib/sizeMigration";
+import { resolveAuthHeader } from "@/lib/wix";
 
-const WIX_ADMIN_API_KEY = process.env.WIX_ADMIN_API_KEY!;
+const WIX_ADMIN_API_KEY = process.env.WIX_ADMIN_API_KEY ?? "";
 
 /**
  * Processa um batch de produtos do job especificado e auto-aciona o próximo
@@ -59,9 +60,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: "completed", jobId: job.id });
     }
 
+    // Busca store fresh para resolver auth (token OAuth tem TTL de 4h)
+    const { data: store } = await supabase
+      .from("stores")
+      .select("wix_instance_id")
+      .eq("id", job.store_id)
+      .single();
+
+    const authHeader = await resolveAuthHeader(
+      WIX_ADMIN_API_KEY,
+      store?.wix_instance_id ?? null
+    );
+
     let batchResult;
     try {
-      batchResult = await processSizeBatch(WIX_ADMIN_API_KEY, siteId, offset, batchSize);
+      batchResult = await processSizeBatch(authHeader, siteId, offset, batchSize);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro desconhecido";
       console.error(`[atualizar-tamanhos/process] job=${job.id} falhou:`, msg);

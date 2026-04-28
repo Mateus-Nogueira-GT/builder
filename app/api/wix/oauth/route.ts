@@ -20,6 +20,8 @@ export async function GET(request: Request) {
   // storeId is required — by the time OAuth starts, the store already exists in the DB
   const { searchParams } = new URL(request.url);
   const storeId = searchParams.get("storeId") || "";
+  // Optional: redireciona para essa URL após o callback (ex: /atualizar-tamanhos)
+  const next = searchParams.get("next") || "";
 
   if (!storeId) {
     return NextResponse.json({ error: "storeId é obrigatório" }, { status: 400 });
@@ -29,10 +31,13 @@ export async function GET(request: Request) {
   // Pattern from external install flow: state is ours, not Wix's.
   const callbackUrl = new URL(`${baseUrl}/api/wix/oauth/callback`);
   callbackUrl.searchParams.set("state", `${token.id}|${storeId}`);
+  if (next) {
+    callbackUrl.searchParams.set("next", next);
+  }
 
   const authUrl = `https://www.wix.com/app-installer?appId=${appId}&postInstallationUrl=${encodeURIComponent(callbackUrl.toString())}`;
 
-  console.log("[WIX OAuth] appId:", appId, "| storeId:", storeId, "| callbackUrl:", callbackUrl.toString());
+  console.log("[WIX OAuth] appId:", appId, "| storeId:", storeId, "| next:", next, "| callbackUrl:", callbackUrl.toString());
 
   return NextResponse.json({ authUrl });
 }
