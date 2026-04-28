@@ -60,7 +60,13 @@ export async function getOAuthToken(instanceId: string): Promise<string> {
     throw new Error("Wix OAuth response missing access_token");
   }
 
-  console.log(`[WixOAuth] Token obtained for instanceId=${instanceId} (expires in 3.5h)`);
+  // DIAG: loga os scopes que o token recebeu pra confirmar se WIX_STORES.READ_PRODUCTS está incluso
+  console.log(
+    `[WixOAuth] Token obtained for instanceId=${instanceId}`,
+    `| scope=${data.scope ?? "(não retornado)"}`,
+    `| expires_in=${data.expires_in ?? "?"}`,
+    `| token_type=${data.token_type ?? "?"}`
+  );
 
   tokenCache.set(instanceId, {
     accessToken,

@@ -29,24 +29,58 @@ interface WixProduct {
   productOptions?: unknown[];
 }
 
-export async function queryWixProductsCount(
+async function tryQuery(
+  url: string,
   apiKey: string,
-  siteId: string
-): Promise<number> {
-  const res = await fetch("https://www.wixapis.com/stores/v1/products/query", {
+  siteId: string,
+  body: Record<string, unknown>
+): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; status: number; text: string }> {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: apiKey,
       "wix-site-id": siteId,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ query: { paging: { limit: 1, offset: 0 } } }),
+    body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    throw new Error(`Wix query failed: ${res.status} ${await res.text()}`);
+  const text = await res.text();
+  if (!res.ok) return { ok: false, status: res.status, text };
+  try {
+    return { ok: true, data: JSON.parse(text) };
+  } catch {
+    return { ok: false, status: res.status, text };
   }
-  const data = await res.json();
-  return data.totalResults || 0;
+}
+
+export async function queryWixProductsCount(
+  apiKey: string,
+  siteId: string
+): Promise<number> {
+  // Tenta V1 primeiro
+  const v1 = await tryQuery(
+    "https://www.wixapis.com/stores/v1/products/query",
+    apiKey,
+    siteId,
+    { query: { paging: { limit: 1, offset: 0 } } }
+  );
+  if (v1.ok) {
+    return (v1.data.totalResults as number) || 0;
+  }
+  console.warn(`[sizeMigration] V1 count falhou status=${v1.status}: ${v1.text.slice(0, 200)} — tentando V3`);
+
+  // Fallback V3
+  const v3 = await tryQuery(
+    "https://www.wixapis.com/stores/v3/products/search",
+    apiKey,
+    siteId,
+    { search: { cursorPaging: { limit: 1 } } }
+  );
+  if (v3.ok) {
+    const meta = v3.data.metadata as Record<string, unknown> | undefined;
+    return ((meta?.total as number) ?? (v3.data.total as number)) || 0;
+  }
+  throw new Error(`Wix query falhou em V1 e V3 | V1: ${v1.status} ${v1.text.slice(0, 150)} | V3: ${v3.status} ${v3.text.slice(0, 150)}`);
 }
 
 export async function queryWixProducts(
