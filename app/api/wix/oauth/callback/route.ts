@@ -63,11 +63,14 @@ export async function GET(request: Request) {
       .eq("id", storeId);
 
     if (error) {
-      console.error(`[OAuth Callback] Falha ao atualizar store ${storeId}:`, error.message);
-    } else {
-      console.log(`[OAuth Callback] Store ${storeId} atualizada com instanceId=${instanceId} siteId=${siteId}`);
+      console.error(`[OAuth Callback] Falha ao atualizar store ${storeId}:`, error.message, error.details);
+      // Falha visível pro usuário em vez de redirecionar como sucesso
+      return NextResponse.redirect(
+        new URL(`${failurePath}?error=db_update_failed`, request.url)
+      );
     }
 
+    console.log(`[OAuth Callback] Store ${storeId} atualizada com instanceId=${instanceId} siteId=${siteId}`);
     return NextResponse.redirect(new URL(successPath, request.url));
   } catch (err) {
     console.error("[OAuth Callback] Error:", err);
