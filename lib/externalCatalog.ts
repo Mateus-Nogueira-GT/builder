@@ -23,6 +23,7 @@ export interface CatalogProduct {
   variants: Array<{ price: string; sku: string; stock: number | null }>;
   category_cache: string[];
   is_published: boolean;
+  sizes: string[] | null;
 }
 
 const FOCUS_CATEGORY_MAP: Record<string, string[]> = {
@@ -70,7 +71,7 @@ export async function fetchProducts(
 
   const { data, error } = await getExternalSupabase()
     .from("catalog_products")
-    .select("id, sku, name, description, images, variants, category_cache, is_published")
+    .select("id, sku, name, description, images, variants, category_cache, is_published, sizes")
     .in("id", slicedIds)
     .order("created_at", { ascending: false });
 

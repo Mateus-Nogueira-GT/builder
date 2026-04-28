@@ -1,4 +1,5 @@
 import type { CatalogProduct } from "./externalCatalog";
+import { buildSizeProductOptions, type WixProductOption } from "./sizes";
 
 export interface WixProduct {
   name: string;
@@ -8,6 +9,8 @@ export interface WixProduct {
   sku: string;
   media: { items: Array<{ image: { url: string } }> };
   visible: boolean;
+  productOptions?: WixProductOption[];
+  manageVariants?: boolean;
 }
 
 export function mapToWixProduct(product: CatalogProduct): WixProduct {
@@ -19,6 +22,9 @@ export function mapToWixProduct(product: CatalogProduct): WixProduct {
   const rawPrice = parseFloat(product.variants?.[0]?.price || "0");
   const price = Number.isFinite(rawPrice) ? rawPrice : 0;
 
+  const productOptions = buildSizeProductOptions(product.sizes);
+  const hasOptions = productOptions.length > 0;
+
   return {
     name: (product.name?.pt || "Produto sem nome").slice(0, 80),
     description: (product.description?.pt || "").slice(0, 7999),
@@ -27,5 +33,6 @@ export function mapToWixProduct(product: CatalogProduct): WixProduct {
     sku: product.sku || "",
     media: { items: imageUrls.map((url) => ({ image: { url } })) },
     visible: product.is_published ?? true,
+    ...(hasOptions ? { productOptions, manageVariants: true } : {}),
   };
 }
