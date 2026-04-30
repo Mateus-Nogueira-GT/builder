@@ -5,11 +5,23 @@ import { resolveAuthHeader } from "@/lib/wix";
 
 const WIX_ADMIN_API_KEY = process.env.WIX_ADMIN_API_KEY ?? "";
 
+// Vercel serverless mata a função antes do setTimeout de 5s disparar.
+// Solução: loopar internamente quantos batches couberem dentro de ~50s
+// (limite default no Vercel Pro é 60s, hobby 10s — ajustamos pro menor).
+const MAX_RUN_MS = 50_000;
+
+// Permite que o Next.js use até maxDuration na função (Vercel Pro)
+export const maxDuration = 60;
+
 /**
- * Processa um batch de produtos do job especificado e auto-aciona o próximo
- * batch via fetch (mesmo padrão de /api/products/sync/process).
+ * Processa batches de produtos do job de migração de tamanhos.
  *
- * Aciona-se também sem body — nesse caso busca o job mais antigo em status=running.
+ * Mudança v2: em vez de processar 1 batch e morrer, fica em loop processando
+ * múltiplos batches dentro do mesmo lifetime da função (até MAX_RUN_MS).
+ * Frontend re-aciona se necessário.
+ *
+ * Idempotente: se duas chamadas concorrerem, ambas leem current_offset do DB
+ * e fazem PATCH no Wix. O Wix lida com idempotência (PATCH é safe pra repetir).
  */
 export async function POST(request: Request) {
   try {
@@ -21,106 +33,121 @@ export async function POST(request: Request) {
       // sem body — busca o job mais antigo rodando
     }
 
-    let job;
-    if (jobId) {
-      const { data, error } = await supabase
-        .from("size_update_jobs")
-        .select("*")
-        .eq("id", jobId)
-        .eq("status", "running")
-        .single();
-      if (error || !data) {
-        return NextResponse.json({ status: "no_job_found" });
+    const fetchJob = async () => {
+      if (jobId) {
+        const { data } = await supabase
+          .from("size_update_jobs")
+          .select("*")
+          .eq("id", jobId)
+          .eq("status", "running")
+          .single();
+        return data;
       }
-      job = data;
-    } else {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("size_update_jobs")
         .select("*")
         .eq("status", "running")
         .order("created_at", { ascending: true })
         .limit(1)
         .single();
-      if (error || !data) {
-        return NextResponse.json({ status: "no_running_jobs" });
+      return data;
+    };
+
+    const initialJob = await fetchJob();
+    if (!initialJob) {
+      return NextResponse.json({ status: "no_running_jobs" });
+    }
+
+    const startTime = Date.now();
+    let batchesRun = 0;
+    let lastJob = initialJob;
+
+    while (Date.now() - startTime < MAX_RUN_MS) {
+      const job = batchesRun === 0 ? initialJob : await fetchJob();
+      if (!job) break;
+      lastJob = job;
+
+      const total = job.total_products as number;
+      const offset = job.current_offset as number;
+      const batchSize = job.batch_size as number;
+      const siteId = job.site_id as string;
+
+      if (offset >= total) {
+        await supabase
+          .from("size_update_jobs")
+          .update({ status: "completed", updated_at: new Date().toISOString() })
+          .eq("id", job.id);
+        return NextResponse.json({
+          status: "completed",
+          jobId: job.id,
+          batchesRun,
+        });
       }
-      job = data;
-    }
 
-    const total = job.total_products as number;
-    const offset = job.current_offset as number;
-    const batchSize = job.batch_size as number;
-    const siteId = job.site_id as string;
+      // Resolve auth (token OAuth tem TTL de 4h, getOAuthToken cuida da renovação)
+      const { data: store } = await supabase
+        .from("stores")
+        .select("wix_instance_id")
+        .eq("id", job.store_id)
+        .single();
+      const authHeader = await resolveAuthHeader(
+        WIX_ADMIN_API_KEY,
+        store?.wix_instance_id ?? null
+      );
 
-    if (offset >= total) {
-      await supabase
-        .from("size_update_jobs")
-        .update({ status: "completed", updated_at: new Date().toISOString() })
-        .eq("id", job.id);
-      return NextResponse.json({ status: "completed", jobId: job.id });
-    }
+      let batchResult;
+      try {
+        batchResult = await processSizeBatch(authHeader, siteId, offset, batchSize);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Erro desconhecido";
+        console.error(`[atualizar-tamanhos/process] job=${job.id} batch=${batchesRun} falhou:`, msg);
+        await supabase
+          .from("size_update_jobs")
+          .update({
+            status: "failed",
+            error_message: msg.slice(0, 500),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", job.id);
+        return NextResponse.json(
+          { status: "failed", jobId: job.id, error: msg, batchesRun },
+          { status: 500 }
+        );
+      }
 
-    // Busca store fresh para resolver auth (token OAuth tem TTL de 4h)
-    const { data: store } = await supabase
-      .from("stores")
-      .select("wix_instance_id")
-      .eq("id", job.store_id)
-      .single();
+      const newOffset = offset + batchSize;
+      const isComplete = newOffset >= total;
 
-    const authHeader = await resolveAuthHeader(
-      WIX_ADMIN_API_KEY,
-      store?.wix_instance_id ?? null
-    );
-
-    let batchResult;
-    try {
-      batchResult = await processSizeBatch(authHeader, siteId, offset, batchSize);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro desconhecido";
-      console.error(`[atualizar-tamanhos/process] job=${job.id} falhou:`, msg);
       await supabase
         .from("size_update_jobs")
         .update({
-          status: "failed",
-          error_message: msg.slice(0, 500),
+          current_offset: newOffset,
+          updated_count: (job.updated_count || 0) + batchResult.updated,
+          skipped_count: (job.skipped_count || 0) + batchResult.skipped,
+          missing_count: (job.missing_count || 0) + batchResult.missing,
+          failed_count: (job.failed_count || 0) + batchResult.failed,
+          status: isComplete ? "completed" : "running",
           updated_at: new Date().toISOString(),
         })
         .eq("id", job.id);
-      return NextResponse.json({ status: "failed", jobId: job.id, error: msg }, { status: 500 });
+
+      batchesRun++;
+
+      if (isComplete) {
+        return NextResponse.json({
+          status: "completed",
+          jobId: job.id,
+          batchesRun,
+        });
+      }
     }
 
-    const newOffset = offset + batchSize;
-    const isComplete = newOffset >= total;
-
-    await supabase
-      .from("size_update_jobs")
-      .update({
-        current_offset: newOffset,
-        updated_count: (job.updated_count || 0) + batchResult.updated,
-        skipped_count: (job.skipped_count || 0) + batchResult.skipped,
-        missing_count: (job.missing_count || 0) + batchResult.missing,
-        failed_count: (job.failed_count || 0) + batchResult.failed,
-        status: isComplete ? "completed" : "running",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", job.id);
-
-    // Auto-aciona o próximo batch após pequena pausa (mesmo padrão de products/sync/process)
-    if (!isComplete) {
-      setTimeout(() => {
-        fetch(`${process.env.NEXTAUTH_URL}/api/atualizar-tamanhos/process`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jobId: job.id }),
-        }).catch(() => {});
-      }, 5000);
-    }
-
+    // Saiu do loop sem completar — frontend vai re-acionar
     return NextResponse.json({
-      status: isComplete ? "completed" : "processing",
-      jobId: job.id,
-      progress: `${Math.min(newOffset, total)}/${total}`,
-      batch: batchResult,
+      status: "processing",
+      jobId: lastJob.id,
+      batchesRun,
+      progress: `${lastJob.current_offset}/${lastJob.total_products}`,
     });
   } catch (err) {
     console.error("[atualizar-tamanhos/process] erro:", err);

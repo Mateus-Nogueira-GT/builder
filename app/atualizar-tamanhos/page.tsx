@@ -88,13 +88,23 @@ export default function AtualizarTamanhosPage() {
     }
   };
 
-  const pollStatus = useCallback(async (jobId: string) => {
+  const pollStatus = useCallback(async (jobId: string, lastProcessed: number = -1) => {
     try {
       const res = await fetch(`/api/atualizar-tamanhos/status?jobId=${jobId}`);
       const data: JobStatus = await res.json();
       setActiveJob(data);
+
       if (data.status === "running") {
-        setTimeout(() => pollStatus(jobId), 4000);
+        // Se o progresso não avançou desde o último poll, o backend morreu —
+        // re-aciona o /process pra continuar do offset atual no DB.
+        if (data.processed === lastProcessed) {
+          fetch("/api/atualizar-tamanhos/process", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jobId }),
+          }).catch(() => {});
+        }
+        setTimeout(() => pollStatus(jobId, data.processed), 4000);
       }
     } catch (err) {
       console.error("[atualizar-tamanhos] polling error:", err);
