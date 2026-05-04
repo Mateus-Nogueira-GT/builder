@@ -88,9 +88,10 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     revived: jobs.length,
-    results: results.map((r, i) => ({
-      jobId: jobs[i].id,
-      ...(r.status === "fulfilled" ? r.value : { error: r.reason }),
-    })),
+    results: results.map((r, i) =>
+      r.status === "fulfilled"
+        ? r.value
+        : { jobId: jobs[i].id, error: String(r.reason) }
+    ),
   });
 }
