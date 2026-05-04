@@ -4,6 +4,7 @@ import { createLog, createProvisionRun, appendProvisionLog, getProvisionRun } fr
 import { publishSite, runTemplatePreflight, ensureCollection, clearCollection, upsertItem, bulkUpsertItems, createProducts, enableCms, resolveAuthHeader } from '@/lib/wix';
 import { fetchTorcedorProductIds, fetchProductsByFocus } from '@/lib/externalCatalog';
 import { mapToWixProduct } from '@/lib/productMapper';
+import { fetchSiteIdFromInstance } from '@/lib/wixOAuth';
 import { COLLECTIONS } from '@/config/collections';
 
 const REQUIRED_COLLECTIONS = [
@@ -41,15 +42,46 @@ export async function POST(request: Request) {
 
             store = storeData;
 
-            if (!storeData.wix_api_key || !storeData.wix_site_id) {
+            if (!storeData.wix_api_key) {
                 return NextResponse.json(
-                    { error: 'A loja selecionada nao possui apiKey ou siteId salvos.' },
+                    { error: 'A loja selecionada nao possui apiKey salva.' },
                     { status: 400 }
                 );
             }
 
             resolvedApiKey = storeData.wix_api_key;
             resolvedSiteId = storeData.wix_site_id;
+
+            // Webhook cria o store com wix_site_id="pending"; só o OAuth callback substitui
+            // pelo siteId real. Se o callback não rodou (state ausente, fluxo diferente),
+            // resolvemos aqui via Wix Apps API antes de seguir.
+            if ((!resolvedSiteId || resolvedSiteId === 'pending') && storeData.wix_instance_id) {
+                console.log(`[inject] siteId pendente, resolvendo via Wix Apps API | instanceId=${storeData.wix_instance_id}`);
+                const fetched = await fetchSiteIdFromInstance(storeData.wix_instance_id);
+                if (!fetched) {
+                    return NextResponse.json(
+                        {
+                            error: 'Não foi possível identificar o site Wix associado à loja. Verifique se autorizou um site, não a conta inteira.',
+                            instanceId: storeData.wix_instance_id,
+                        },
+                        { status: 502 }
+                    );
+                }
+                resolvedSiteId = fetched;
+                await supabase
+                    .from('stores')
+                    .update({ wix_site_id: fetched })
+                    .eq('id', resolvedStoreId);
+                store = { ...storeData, wix_site_id: fetched };
+                console.log(`[inject] siteId salvo: ${fetched}`);
+            }
+
+            if (!resolvedSiteId || resolvedSiteId === 'pending') {
+                return NextResponse.json(
+                    { error: 'A loja selecionada nao possui siteId resolvido.' },
+                    { status: 400 }
+                );
+            }
         }
 
         if (!payload || !resolvedSiteId || !resolvedApiKey) {
