@@ -126,12 +126,52 @@ export async function fetchSizesBySkus(
   return map;
 }
 
-async function patchProductOptions(
+async function patchProductOptionsV3(
   apiKey: string,
   siteId: string,
   productId: string,
   sizes: string[]
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; status: number; error?: string }> {
+  const res = await fetch(
+    `https://www.wixapis.com/stores/v3/products/${productId}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: apiKey,
+        "wix-site-id": siteId,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        product: {
+          options: [
+            {
+              name: "Tamanho",
+              optionRenderType: "TEXT_CHOICES",
+              choicesSettings: {
+                choices: sizes.map((value) => ({
+                  name: value,
+                  key: value,
+                })),
+              },
+            },
+          ],
+        },
+      }),
+    }
+  );
+  if (!res.ok) {
+    const errBody = await res.text();
+    return { ok: false, status: res.status, error: `${res.status} ${errBody.slice(0, 200)}` };
+  }
+  return { ok: true, status: res.status };
+}
+
+async function patchProductOptionsV1(
+  apiKey: string,
+  siteId: string,
+  productId: string,
+  sizes: string[]
+): Promise<{ ok: boolean; status: number; error?: string }> {
   const res = await fetch(
     `https://www.wixapis.com/stores/v1/products/${productId}`,
     {
@@ -151,9 +191,33 @@ async function patchProductOptions(
   );
   if (!res.ok) {
     const errBody = await res.text();
-    return { ok: false, error: `${res.status} ${errBody.slice(0, 200)}` };
+    return { ok: false, status: res.status, error: `${res.status} ${errBody.slice(0, 200)}` };
   }
-  return { ok: true };
+  return { ok: true, status: res.status };
+}
+
+/**
+ * Tenta V3 primeiro (sites criados via marketplace redemption são V3).
+ * Se V3 retornar 404/400 indicando que o produto não existe no V3 catalog,
+ * cai pro V1.
+ */
+async function patchProductOptions(
+  apiKey: string,
+  siteId: string,
+  productId: string,
+  sizes: string[]
+): Promise<{ ok: boolean; error?: string }> {
+  const v3 = await patchProductOptionsV3(apiKey, siteId, productId, sizes);
+  if (v3.ok) return { ok: true };
+
+  // V3 falhou — tenta V1 como fallback (sites antigos)
+  const v1 = await patchProductOptionsV1(apiKey, siteId, productId, sizes);
+  if (v1.ok) return { ok: true };
+
+  return {
+    ok: false,
+    error: `V3:${v3.status} | V1:${v1.status} | ${v1.error}`,
+  };
 }
 
 export interface BatchResult {
