@@ -9,7 +9,6 @@
 
 import type { WixCollectionField, PreflightResult, PreflightCheck } from "./schemas";
 import { getOAuthToken } from "./wixOAuth";
-import { patchProductOptions } from "./sizeMigration";
 
 const WIX_API_BASE = "https://www.wixapis.com/wix-data/v2";
 const WIX_SITE_PROPERTIES_API = "https://www.wixapis.com/site-properties/v4";
@@ -515,49 +514,29 @@ export async function createProduct(
 }
 
 /**
- * Creates multiple products with rate limiting. After each create,
- * if the product had productOptions, applies them via V3 PATCH (with V1
- * fallback) — V1 OAuth tokens silently drop options on POST, so we
- * re-apply explicitly.
+ * Creates multiple products with rate limiting. Size dropdown is NOT
+ * applied here — V1 POST under OAuth doesn't reliably attach options.
+ * Instead, the inject route triggers a size_update_jobs run after
+ * publish, which uses the proven V3 PATCH flow from sizeMigration.
  */
 export async function createProducts(
   apiKey: string,
   siteId: string,
   products: Array<WixProductInput>
-): Promise<{ created: number; failed: number; optionsApplied: number; optionsFailed: number }> {
+): Promise<{ created: number; failed: number }> {
   let created = 0;
   let failed = 0;
-  let optionsApplied = 0;
-  let optionsFailed = 0;
 
   for (const product of products) {
-    let productId: string | null = null;
     try {
-      productId = await createProduct(apiKey, siteId, product);
+      await createProduct(apiKey, siteId, product);
       created++;
     } catch (err) {
       console.error(`Failed to create product "${product.name}":`, err instanceof Error ? err.message : err);
       failed++;
     }
-
-    const sizes = product.productOptions?.[0]?.choices?.map((c) => c.value) ?? [];
-    if (productId && sizes.length > 0) {
-      const result = await patchProductOptions(apiKey, siteId, productId, sizes);
-      if (result.ok) {
-        optionsApplied++;
-      } else {
-        optionsFailed++;
-        console.warn(
-          `[createProducts] PATCH options falhou sku=${product.sku} id=${productId}: ${result.error}`
-        );
-      }
-      // small delay between PATCH and next create to respect rate limits
-      await new Promise((r) => setTimeout(r, 250));
-    }
-
-    // 200ms delay between products to respect rate limits
     await new Promise((r) => setTimeout(r, 200));
   }
 
-  return { created, failed, optionsApplied, optionsFailed };
+  return { created, failed };
 }

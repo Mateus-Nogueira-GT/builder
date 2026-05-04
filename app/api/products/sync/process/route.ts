@@ -92,8 +92,6 @@ export async function POST(request: Request) {
         offset: currentOffset,
         created: result.created,
         failed: result.failed,
-        optionsApplied: result.optionsApplied,
-        optionsFailed: result.optionsFailed,
       },
       progress: `${Math.min(newOffset, totalIds.length)}/${totalIds.length}`,
     });
