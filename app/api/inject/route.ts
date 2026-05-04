@@ -368,8 +368,8 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
             await appendProvisionLog(
                 runId,
                 createLog(
-                    `Produtos iniciais: ${result.created} criados, ${result.failed} falhas.`,
-                    result.failed > 0 ? 'warning' : 'success',
+                    `Produtos iniciais: ${result.created} criados, ${result.failed} falhas. Tamanhos aplicados: ${result.optionsApplied}, falhas: ${result.optionsFailed}.`,
+                    result.failed > 0 || result.optionsFailed > 0 ? 'warning' : 'success',
                     'products'
                 ),
                 { status: 'running', currentStep: 'branding' }
