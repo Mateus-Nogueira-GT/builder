@@ -10,6 +10,7 @@ export interface WixProduct {
   media: { items: Array<{ image: { url: string } }> };
   visible: boolean;
   productOptions?: WixProductOption[];
+  manageVariants?: boolean;
 }
 
 export interface MapOptions {
@@ -41,6 +42,6 @@ export function mapToWixProduct(
     sku: product.sku || "",
     media: { items: imageUrls.map((url) => ({ image: { url } })) },
     visible: product.is_published ?? true,
-    ...(hasOptions ? { productOptions } : {}),
+    ...(hasOptions ? { productOptions, manageVariants: true } : {}),
   };
 }
