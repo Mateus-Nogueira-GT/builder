@@ -7,8 +7,10 @@
  */
 
 import { buildSizeProductOptions } from "./sizes";
+import { supabase } from "./supabase";
 
 const DEFAULT_SIZES = ["P", "M", "G", "GG", "G1", "G2"];
+const SIZE_JOB_BATCH_SIZE = 30;
 
 interface WixProduct {
   id: string;
@@ -256,4 +258,73 @@ export async function processSizeBatch(
   );
 
   return { updated, skipped, missing, failed };
+}
+
+export interface KickoffResult {
+  jobId: string;
+  totalProducts: number;
+  alreadyRunning: boolean;
+}
+
+/**
+ * Cria (ou retorna o existente) job de size_update_jobs e dispara o primeiro
+ * batch em fire-and-forget. Usado tanto pelo endpoint manual `/start` (clientes
+ * antigos) quanto pelo provisionamento automatico de novas lojas em
+ * `/api/inject`.
+ *
+ * Idempotente: se ja existe job rodando pra essa loja, devolve o existente
+ * em vez de criar duplicata.
+ */
+export async function kickoffSizeUpdateJob(params: {
+  storeId: string;
+  siteId: string;
+  ownerEmail: string | null;
+  authHeader: string;
+  baseUrl: string;
+}): Promise<KickoffResult> {
+  const { storeId, siteId, ownerEmail, authHeader, baseUrl } = params;
+
+  const { data: existing } = await supabase
+    .from("size_update_jobs")
+    .select("id, total_products")
+    .eq("store_id", storeId)
+    .eq("status", "running")
+    .maybeSingle();
+
+  if (existing) {
+    return {
+      jobId: existing.id,
+      totalProducts: existing.total_products as number,
+      alreadyRunning: true,
+    };
+  }
+
+  const totalProducts = await queryWixProductsCount(authHeader, siteId);
+
+  const { data: job, error: jobErr } = await supabase
+    .from("size_update_jobs")
+    .insert({
+      store_id: storeId,
+      site_id: siteId,
+      owner_email: ownerEmail,
+      status: "running",
+      total_products: totalProducts,
+      current_offset: 0,
+      batch_size: SIZE_JOB_BATCH_SIZE,
+    })
+    .select("id")
+    .single();
+
+  if (jobErr || !job) {
+    throw new Error(`Falha ao criar size_update_job: ${jobErr?.message ?? "unknown"}`);
+  }
+
+  // Fire-and-forget — /process se auto-restarta se Vercel matar a funcao
+  fetch(`${baseUrl}/api/atualizar-tamanhos/process`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobId: job.id }),
+  }).catch((err) => console.warn("[kickoffSizeUpdateJob] dispatch falhou:", err));
+
+  return { jobId: job.id, totalProducts, alreadyRunning: false };
 }

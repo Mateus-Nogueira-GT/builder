@@ -5,6 +5,7 @@ import { publishSite, runTemplatePreflight, ensureCollection, clearCollection, u
 import { fetchTorcedorProductIds, fetchProductsByFocus } from '@/lib/externalCatalog';
 import { mapToWixProduct } from '@/lib/productMapper';
 import { fetchSiteIdFromInstance } from '@/lib/wixOAuth';
+import { kickoffSizeUpdateJob } from '@/lib/sizeMigration';
 import { COLLECTIONS } from '@/config/collections';
 
 const REQUIRED_COLLECTIONS = [
@@ -413,48 +414,33 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
             .eq('id', storeId);
     }
 
-    // Trigger size update job — adiciona o dropdown de tamanho usando o
-    // mesmo fluxo retroativo que já funciona em /api/atualizar-tamanhos.
+    // Trigger size update job — mesmo fluxo retroativo do /api/atualizar-tamanhos.
+    // Helper compartilhado: idempotente (devolve job existente se ja roda).
     if (storeId) {
         try {
-            const { queryWixProductsCount } = await import('@/lib/sizeMigration');
-            const totalProducts = await queryWixProductsCount(authToken, siteId);
             const { data: storeOwner } = await supabase
                 .from('stores')
                 .select('owner_email')
                 .eq('id', storeId)
                 .single();
 
-            const { data: sizeJob } = await supabase
-                .from('size_update_jobs')
-                .insert({
-                    store_id: storeId,
-                    site_id: siteId,
-                    owner_email: storeOwner?.owner_email ?? null,
-                    status: 'running',
-                    total_products: totalProducts,
-                    current_offset: 0,
-                    batch_size: 30,
-                })
-                .select('id')
-                .single();
+            const kickoff = await kickoffSizeUpdateJob({
+                storeId,
+                siteId,
+                ownerEmail: storeOwner?.owner_email ?? null,
+                authHeader: authToken,
+                baseUrl: process.env.NEXTAUTH_URL ?? '',
+            });
 
-            if (sizeJob) {
-                await appendProvisionLog(
-                    runId,
-                    createLog(
-                        `Job de tamanhos iniciado em background (jobId=${sizeJob.id}, total=${totalProducts}).`,
-                        'success',
-                        'finalize'
-                    ),
-                    { status: 'running', currentStep: 'finalize' }
-                );
-                fetch(`${process.env.NEXTAUTH_URL}/api/atualizar-tamanhos/process`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jobId: sizeJob.id }),
-                }).catch((err) => console.warn('[inject] falha ao disparar size process:', err));
-            }
+            await appendProvisionLog(
+                runId,
+                createLog(
+                    `Job de tamanhos iniciado em background (jobId=${kickoff.jobId}, total=${kickoff.totalProducts}${kickoff.alreadyRunning ? ', ja rodava' : ''}).`,
+                    'success',
+                    'finalize'
+                ),
+                { status: 'running', currentStep: 'finalize' }
+            );
         } catch (err) {
             console.warn('[inject] falha ao iniciar size_update_job:', err);
             await appendProvisionLog(

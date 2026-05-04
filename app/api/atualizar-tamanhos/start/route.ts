@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { supabase } from "@/lib/supabase";
-import { queryWixProductsCount } from "@/lib/sizeMigration";
+import { kickoffSizeUpdateJob } from "@/lib/sizeMigration";
 import { resolveAuthHeader } from "@/lib/wix";
 import { fetchSiteIdFromInstance } from "@/lib/wixOAuth";
+import { getPublicBaseUrl } from "@/lib/url";
 
 const WIX_ADMIN_API_KEY = process.env.WIX_ADMIN_API_KEY ?? "";
-const BATCH_SIZE = 30;
 
 /**
  * Inicia um job de migração de tamanhos para a loja do usuário logado.
@@ -73,79 +73,37 @@ export async function POST(request: Request) {
       console.log(`[atualizar-tamanhos/start] siteId salvo: ${siteId}`);
     }
 
-    // Verifica se já existe job rodando pra mesma loja — evita duplicação
-    const { data: existing } = await supabase
-      .from("size_update_jobs")
-      .select("id")
-      .eq("store_id", storeId)
-      .eq("status", "running")
-      .maybeSingle();
-
-    if (existing) {
-      return NextResponse.json({
-        jobId: existing.id,
-        status: "already_running",
-      });
-    }
-
     // Resolve auth: prioriza OAuth token (do instanceId), com fallback pra admin key
     const authHeader = await resolveAuthHeader(WIX_ADMIN_API_KEY, store.wix_instance_id);
 
-    // Conta total de produtos na loja Wix
-    let totalProducts: number;
+    let kickoff;
     try {
-      totalProducts = await queryWixProductsCount(authHeader, siteId);
-      console.log(`[atualizar-tamanhos/start] siteId=${siteId} totalProducts=${totalProducts}`);
+      kickoff = await kickoffSizeUpdateJob({
+        storeId,
+        siteId,
+        ownerEmail: token.email,
+        authHeader,
+        baseUrl: getPublicBaseUrl(request),
+      });
+      console.log(
+        `[atualizar-tamanhos/start] siteId=${siteId} totalProducts=${kickoff.totalProducts} jobId=${kickoff.jobId}`
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(
-        `[atualizar-tamanhos/start] erro ao contar produtos | storeId=${storeId} siteId=${siteId}:`,
+        `[atualizar-tamanhos/start] erro no kickoff | storeId=${storeId} siteId=${siteId}:`,
         msg
       );
       return NextResponse.json(
-        {
-          error: "Falha ao acessar produtos da loja Wix",
-          detail: msg,
-          siteId,
-        },
+        { error: "Falha ao iniciar job de atualização", detail: msg, siteId },
         { status: 502 }
       );
     }
 
-    // Cria o job
-    const { data: job, error: jobErr } = await supabase
-      .from("size_update_jobs")
-      .insert({
-        store_id: storeId,
-        site_id: siteId,
-        owner_email: token.email,
-        status: "running",
-        total_products: totalProducts,
-        current_offset: 0,
-        batch_size: BATCH_SIZE,
-      })
-      .select("id")
-      .single();
-
-    if (jobErr || !job) {
-      console.error("[atualizar-tamanhos/start] erro ao criar job:", jobErr);
-      return NextResponse.json(
-        { error: "Falha ao criar job de atualização" },
-        { status: 500 }
-      );
-    }
-
-    // Dispara o primeiro batch (fire-and-forget)
-    fetch(`${process.env.NEXTAUTH_URL}/api/atualizar-tamanhos/process`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: job.id }),
-    }).catch((err) => console.warn("[atualizar-tamanhos/start] falha ao disparar process:", err));
-
     return NextResponse.json({
-      jobId: job.id,
-      status: "started",
-      totalProducts,
+      jobId: kickoff.jobId,
+      status: kickoff.alreadyRunning ? "already_running" : "started",
+      totalProducts: kickoff.totalProducts,
     });
   } catch (err) {
     console.error("[atualizar-tamanhos/start] erro:", err);
