@@ -489,6 +489,11 @@ export async function createProduct(
     sku: string;
     media: { items: Array<{ image: { url: string } }> };
     visible: boolean;
+    productOptions?: Array<{
+      optionType: string;
+      name: string;
+      choices: Array<{ value: string; description: string }>;
+    }>;
   }
 ): Promise<void> {
   await withRetry(async () => {
@@ -516,6 +521,11 @@ export async function createProducts(
     sku: string;
     media: { items: Array<{ image: { url: string } }> };
     visible: boolean;
+    productOptions?: Array<{
+      optionType: string;
+      name: string;
+      choices: Array<{ value: string; description: string }>;
+    }>;
   }>
 ): Promise<{ created: number; failed: number }> {
   let created = 0;

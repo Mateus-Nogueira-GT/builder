@@ -23,12 +23,12 @@ export async function POST(request: Request) {
         let resolvedApiKey = apiKey as string | undefined;
         let resolvedSiteId = siteId as string | undefined;
 
-        let store: { id: string; name: string; wix_api_key: string | null; wix_site_id: string } | null = null;
+        let store: { id: string; name: string; wix_api_key: string | null; wix_site_id: string; wix_instance_id: string | null } | null = null;
 
         if (resolvedStoreId) {
             const { data: storeData, error: storeError } = await supabase
                 .from('stores')
-                .select('id, name, wix_api_key, wix_site_id')
+                .select('id, name, wix_api_key, wix_site_id, wix_instance_id')
                 .eq('id', resolvedStoreId)
                 .single();
 
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
                 apiKey: resolvedApiKey,
                 siteId: resolvedSiteId,
                 storeId: resolvedStoreId || null,
-                instanceId: null,
+                instanceId: store?.wix_instance_id || null,
             },
         });
 
@@ -318,7 +318,7 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         const focus = (onboarding.focus as string) || 'todos';
         const initialProducts = await fetchProductsByFocus(focus, 100);
         if (initialProducts.length > 0) {
-            const wixProducts = initialProducts.map(mapToWixProduct);
+            const wixProducts = initialProducts.map((p) => mapToWixProduct(p, { withSizes: true }));
             const result = await createProducts(authToken, siteId, wixProducts);
             await appendProvisionLog(
                 runId,

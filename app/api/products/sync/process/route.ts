@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     }
 
     const products = await fetchProducts(totalIds, batchSize, currentOffset);
-    const wixProducts = products.map(mapToWixProduct);
+    const wixProducts = products.map((p) => mapToWixProduct(p, { withSizes: true }));
     const authToken = await resolveAuthHeader(job.api_key, job.instance_id);
     const result = await createProducts(authToken, job.site_id, wixProducts);
 

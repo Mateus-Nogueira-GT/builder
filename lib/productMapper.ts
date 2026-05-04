@@ -10,10 +10,16 @@ export interface WixProduct {
   media: { items: Array<{ image: { url: string } }> };
   visible: boolean;
   productOptions?: WixProductOption[];
-  manageVariants?: boolean;
 }
 
-export function mapToWixProduct(product: CatalogProduct): WixProduct {
+export interface MapOptions {
+  withSizes?: boolean;
+}
+
+export function mapToWixProduct(
+  product: CatalogProduct,
+  options: MapOptions = {}
+): WixProduct {
   const imageUrls = (product.images || [])
     .sort((a, b) => (a.position || 0) - (b.position || 0))
     .map((img) => img.src)
@@ -22,7 +28,9 @@ export function mapToWixProduct(product: CatalogProduct): WixProduct {
   const rawPrice = parseFloat(product.variants?.[0]?.price || "0");
   const price = Number.isFinite(rawPrice) ? rawPrice : 0;
 
-  const productOptions = buildSizeProductOptions(product.sizes);
+  const productOptions = options.withSizes
+    ? buildSizeProductOptions(product.sizes)
+    : [];
   const hasOptions = productOptions.length > 0;
 
   return {
@@ -33,6 +41,6 @@ export function mapToWixProduct(product: CatalogProduct): WixProduct {
     sku: product.sku || "",
     media: { items: imageUrls.map((url) => ({ image: { url } })) },
     visible: product.is_published ?? true,
-    ...(hasOptions ? { productOptions, manageVariants: true } : {}),
+    ...(hasOptions ? { productOptions } : {}),
   };
 }
