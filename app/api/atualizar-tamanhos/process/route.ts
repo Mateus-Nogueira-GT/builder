@@ -150,7 +150,19 @@ export async function POST(request: Request) {
       }
     }
 
-    // Saiu do loop sem completar — frontend vai re-acionar
+    // Saiu do loop sem completar — fire-and-forget self-restart pra manter
+    // o job vivo mesmo sem frontend polling (caso de novas lojas que disparam
+    // o job a partir do /api/inject sem ter UI dedicada). Idempotente: se
+    // o frontend também re-acionar, ambos workers leem o mesmo offset do DB
+    // e PATCH é safe pra repetir.
+    fetch(`${process.env.NEXTAUTH_URL}/api/atualizar-tamanhos/process`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: lastJob.id }),
+    }).catch((err) =>
+      console.warn("[atualizar-tamanhos/process] self-restart falhou:", err)
+    );
+
     return NextResponse.json({
       status: "processing",
       jobId: lastJob.id,
