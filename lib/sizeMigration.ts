@@ -27,6 +27,24 @@ interface WixProduct {
   sku?: string;
   name?: string;
   productOptions?: unknown[];
+  variants?: Array<{ sku?: string; variant?: { sku?: string } }>;
+  variantsInfo?: { variants?: Array<{ sku?: string }> };
+}
+
+/**
+ * Extrai o SKU de um produto Wix tentando múltiplos caminhos:
+ * - V1 simples: p.sku
+ * - V1 com variants: p.variants[0].variant.sku ou p.variants[0].sku
+ * - V3 catalog: p.variantsInfo.variants[0].sku
+ */
+function extractSku(p: WixProduct): string | undefined {
+  return (
+    p.sku ||
+    p.variants?.[0]?.variant?.sku ||
+    p.variants?.[0]?.sku ||
+    p.variantsInfo?.variants?.[0]?.sku ||
+    undefined
+  );
 }
 
 async function tryQuery(
@@ -238,8 +256,31 @@ export async function processSizeBatch(
   batchSize: number
 ): Promise<BatchResult> {
   const products = await queryWixProducts(apiKey, siteId, offset, batchSize);
-  const skus = products.map((p) => p.sku).filter((s): s is string => Boolean(s));
+
+  // DIAG: log estrutura do primeiro produto pra debug de SKU
+  if (offset === 0 && products.length > 0) {
+    console.log(
+      `[sizeMigration] DIAG sample product (offset=0):`,
+      JSON.stringify(products[0]).slice(0, 800)
+    );
+  }
+
+  const skuByProduct = new Map<string, string>();
+  for (const p of products) {
+    const sku = extractSku(p);
+    if (sku) skuByProduct.set(p.id, sku);
+  }
+  const skus = Array.from(skuByProduct.values());
   const sizesBySku = await fetchSizesBySkus(skus);
+
+  console.log(
+    `[sizeMigration] Batch offset=${offset} | total=${products.length} | com SKU=${skus.length} | match catalogo=${sizesBySku.size}`
+  );
+  if (skus.length > 0 && sizesBySku.size === 0) {
+    console.warn(
+      `[sizeMigration] Nenhum SKU casou com catalog_products. Sample SKUs do Wix: ${JSON.stringify(skus.slice(0, 5))}`
+    );
+  }
 
   let updated = 0;
   let skipped = 0;
@@ -254,7 +295,8 @@ export async function processSizeBatch(
       continue;
     }
 
-    const sizes = p.sku ? sizesBySku.get(p.sku) : null;
+    const sku = skuByProduct.get(p.id);
+    const sizes = sku ? sizesBySku.get(sku) : null;
     if (!sizes) {
       missing++;
       continue;
@@ -265,7 +307,7 @@ export async function processSizeBatch(
       updated++;
     } else {
       failed++;
-      console.error(`[sizeMigration] PATCH falhou ${p.id} (sku=${p.sku}): ${result.error}`);
+      console.error(`[sizeMigration] PATCH falhou ${p.id} (sku=${sku}): ${result.error}`);
     }
 
     // Rate limiting — 250ms entre PATCHes
