@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getPublicBaseUrl } from "@/lib/url";
 
+// Permite que a funcao rode ate 60s caso /process demore a aceitar conexao
+export const maxDuration = 60;
+
 /**
  * Watchdog server-side: roda a cada 1 minuto via Vercel Cron.
  *
@@ -47,28 +50,47 @@ export async function GET(request: Request) {
     `[atualizar-tamanhos/cron] revivendo ${jobs.length} job(s) running | baseUrl=${baseUrl}`
   );
 
-  // Fire-and-forget /process pra cada job — runtime mantem o processo vivo
-  // brevemente apos return, suficiente pra requests saírem. Se falhar, o
-  // proximo cron daqui a 1 min tenta de novo.
-  for (const job of jobs) {
-    fetch(`${baseUrl}/api/atualizar-tamanhos/process`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: job.id }),
-    }).catch((err) =>
-      console.warn(
-        `[atualizar-tamanhos/cron] dispatch falhou job=${job.id}:`,
-        err instanceof Error ? err.message : err
-      )
-    );
-  }
+  // Importante: fire-and-forget puro nao funciona em serverless — a runtime
+  // mata a funcao apos return e cancela fetches pendentes que ainda nao
+  // estabeleceram conexao TCP. Solucao: AWAIT cada fetch ate 3s com abort.
+  // Isso garante que a request saiu de fato, mas nao bloqueia esperando a
+  // resposta de /process (que pode levar ate 50s).
+  const results = await Promise.allSettled(
+    jobs.map(async (job) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      try {
+        await fetch(`${baseUrl}/api/atualizar-tamanhos/process`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jobId: job.id }),
+          signal: controller.signal,
+        });
+        return { jobId: job.id, dispatched: true };
+      } catch (err) {
+        // AbortError aqui significa que a request foi enviada e estamos so
+        // desistindo de esperar a resposta — esperado e ok. Outros erros sao
+        // problemas reais (DNS, conexao recusada, etc).
+        const isAbort =
+          err instanceof DOMException && err.name === "AbortError";
+        if (!isAbort) {
+          console.warn(
+            `[atualizar-tamanhos/cron] dispatch falhou job=${job.id}:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+        return { jobId: job.id, dispatched: isAbort };
+      } finally {
+        clearTimeout(timeout);
+      }
+    })
+  );
 
   return NextResponse.json({
     revived: jobs.length,
-    jobs: jobs.map((j) => ({
-      id: j.id,
-      progress: `${j.current_offset}/${j.total_products}`,
-      lastUpdate: j.updated_at,
+    results: results.map((r, i) => ({
+      jobId: jobs[i].id,
+      ...(r.status === "fulfilled" ? r.value : { error: r.reason }),
     })),
   });
 }
