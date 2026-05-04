@@ -1,50 +1,27 @@
 /**
  * Size Migration — atualiza produtos existentes em lojas Wix com o seletor "Tamanho".
  *
- * Esta lib é a versão server-side do script add-sizes.mjs, adaptada para rodar
- * em batches pequenos dentro de jobs assíncronos (size_update_jobs).
+ * Aplica o conjunto padrão de tamanhos adultos em todos os produtos que ainda
+ * não possuem productOptions. Não depende de lookup no catálogo externo —
+ * isso permite cobrir lojas cujos produtos vieram de fontes diferentes.
  */
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { buildSizeProductOptions } from "./sizes";
 
-let _externalClient: SupabaseClient | null = null;
-
-function getExternalSupabase(): SupabaseClient {
-  if (!_externalClient) {
-    const url = process.env.EXTERNAL_SUPABASE_URL;
-    const key = process.env.EXTERNAL_SUPABASE_KEY;
-    if (!url || !key) {
-      throw new Error("EXTERNAL_SUPABASE_URL e EXTERNAL_SUPABASE_KEY são obrigatórios");
-    }
-    _externalClient = createClient(url, key);
-  }
-  return _externalClient;
-}
+const DEFAULT_SIZES = ["P", "M", "G", "GG", "G1", "G2"];
 
 interface WixProduct {
   id: string;
-  sku?: string;
   name?: string;
+  sku?: string;
   productOptions?: unknown[];
-  variants?: Array<{ sku?: string; variant?: { sku?: string } }>;
-  variantsInfo?: { variants?: Array<{ sku?: string }> };
+  variants?: Array<{ sku?: string }>;
 }
 
-/**
- * Extrai o SKU de um produto Wix tentando múltiplos caminhos:
- * - V1 simples: p.sku
- * - V1 com variants: p.variants[0].variant.sku ou p.variants[0].sku
- * - V3 catalog: p.variantsInfo.variants[0].sku
- */
-function extractSku(p: WixProduct): string | undefined {
-  return (
-    p.sku ||
-    p.variants?.[0]?.variant?.sku ||
-    p.variants?.[0]?.sku ||
-    p.variantsInfo?.variants?.[0]?.sku ||
-    undefined
-  );
+function extractProductSku(p: WixProduct): string | null {
+  if (p.sku) return p.sku;
+  const variantSku = p.variants?.[0]?.sku;
+  return variantSku ?? null;
 }
 
 async function tryQuery(
@@ -121,27 +98,6 @@ export async function queryWixProducts(
   }
   const data = await res.json();
   return data.products || [];
-}
-
-export async function fetchSizesBySkus(
-  skus: string[]
-): Promise<Map<string, string[]>> {
-  const map = new Map<string, string[]>();
-  if (skus.length === 0) return map;
-
-  const { data, error } = await getExternalSupabase()
-    .from("catalog_products")
-    .select("sku, sizes")
-    .in("sku", skus);
-
-  if (error) throw new Error(`Supabase error: ${error.message}`);
-
-  for (const row of data || []) {
-    if (Array.isArray(row.sizes) && row.sizes.length > 0) {
-      map.set(row.sku, row.sizes);
-    }
-  }
-  return map;
 }
 
 async function patchProductOptionsV3(
@@ -246,48 +202,36 @@ export interface BatchResult {
 }
 
 /**
- * Processa um batch de produtos: query do Wix → busca tamanhos → PATCH.
+ * Processa um batch de produtos: query do Wix → PATCH com DEFAULT_SIZES.
+ * Aplica P/M/G/GG/G1/G2 em produtos sem productOptions.
+ * Quando `allowedSkus` é fornecido (e não vazio), só processa produtos cujo
+ * SKU está na lista — os demais contam como `missing`.
  * Inclui delay de 250ms entre PATCHes para respeitar rate limit do Wix.
  */
 export async function processSizeBatch(
   apiKey: string,
   siteId: string,
   offset: number,
-  batchSize: number
+  batchSize: number,
+  allowedSkus?: Set<string>
 ): Promise<BatchResult> {
   const products = await queryWixProducts(apiKey, siteId, offset, batchSize);
-
-  // DIAG: log estrutura do primeiro produto pra debug de SKU
-  if (offset === 0 && products.length > 0) {
-    console.log(
-      `[sizeMigration] DIAG sample product (offset=0):`,
-      JSON.stringify(products[0]).slice(0, 800)
-    );
-  }
-
-  const skuByProduct = new Map<string, string>();
-  for (const p of products) {
-    const sku = extractSku(p);
-    if (sku) skuByProduct.set(p.id, sku);
-  }
-  const skus = Array.from(skuByProduct.values());
-  const sizesBySku = await fetchSizesBySkus(skus);
-
-  console.log(
-    `[sizeMigration] Batch offset=${offset} | total=${products.length} | com SKU=${skus.length} | match catalogo=${sizesBySku.size}`
-  );
-  if (skus.length > 0 && sizesBySku.size === 0) {
-    console.warn(
-      `[sizeMigration] Nenhum SKU casou com catalog_products. Sample SKUs do Wix: ${JSON.stringify(skus.slice(0, 5))}`
-    );
-  }
 
   let updated = 0;
   let skipped = 0;
   let missing = 0;
   let failed = 0;
+  const filterActive = !!(allowedSkus && allowedSkus.size > 0);
 
   for (const p of products) {
+    if (filterActive) {
+      const sku = extractProductSku(p);
+      if (!sku || !allowedSkus!.has(sku)) {
+        missing++;
+        continue;
+      }
+    }
+
     const hasOptions =
       Array.isArray(p.productOptions) && p.productOptions.length > 0;
     if (hasOptions) {
@@ -295,24 +239,21 @@ export async function processSizeBatch(
       continue;
     }
 
-    const sku = skuByProduct.get(p.id);
-    const sizes = sku ? sizesBySku.get(sku) : null;
-    if (!sizes) {
-      missing++;
-      continue;
-    }
-
-    const result = await patchProductOptions(apiKey, siteId, p.id, sizes);
+    const result = await patchProductOptions(apiKey, siteId, p.id, DEFAULT_SIZES);
     if (result.ok) {
       updated++;
     } else {
       failed++;
-      console.error(`[sizeMigration] PATCH falhou ${p.id} (sku=${sku}): ${result.error}`);
+      console.error(`[sizeMigration] PATCH falhou ${p.id}: ${result.error}`);
     }
 
     // Rate limiting — 250ms entre PATCHes
     await new Promise((r) => setTimeout(r, 250));
   }
+
+  console.log(
+    `[sizeMigration] Batch offset=${offset} | total=${products.length} | atualizados=${updated} | pulados=${skipped} | foraDaLista=${missing} | falhas=${failed}`
+  );
 
   return { updated, skipped, missing, failed };
 }

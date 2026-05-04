@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { processSizeBatch } from "@/lib/sizeMigration";
 import { resolveAuthHeader } from "@/lib/wix";
+import { fetchWixTemplateSkuSet } from "@/lib/externalCatalog";
 
 const WIX_ADMIN_API_KEY = process.env.WIX_ADMIN_API_KEY ?? "";
 
@@ -62,6 +63,13 @@ export async function POST(request: Request) {
     let batchesRun = 0;
     let lastJob = initialJob;
 
+    // Allowlist de SKUs dos templates Wix — só atualiza produtos cujo SKU
+    // bate. Se a tabela estiver vazia, processSizeBatch desativa o filtro.
+    const allowedSkus = await fetchWixTemplateSkuSet();
+    console.log(
+      `[atualizar-tamanhos/process] allowedSkus=${allowedSkus.size} (filtro ${allowedSkus.size > 0 ? "ATIVO" : "DESATIVADO"})`
+    );
+
     while (Date.now() - startTime < MAX_RUN_MS) {
       const job = batchesRun === 0 ? initialJob : await fetchJob();
       if (!job) break;
@@ -97,7 +105,7 @@ export async function POST(request: Request) {
 
       let batchResult;
       try {
-        batchResult = await processSizeBatch(authHeader, siteId, offset, batchSize);
+        batchResult = await processSizeBatch(authHeader, siteId, offset, batchSize, allowedSkus);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Erro desconhecido";
         console.error(`[atualizar-tamanhos/process] job=${job.id} batch=${batchesRun} falhou:`, msg);

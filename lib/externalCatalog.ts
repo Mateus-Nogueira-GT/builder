@@ -83,6 +83,33 @@ export async function fetchProducts(
   return (data as CatalogProduct[]) || [];
 }
 
+export async function fetchWixTemplateSkuSet(): Promise<Set<string>> {
+  const allSkus: string[] = [];
+  let offset = 0;
+  const pageSize = 1000;
+
+  while (true) {
+    const { data, error } = await getExternalSupabase()
+      .from("wix_template_skus")
+      .select("sku")
+      .range(offset, offset + pageSize - 1);
+
+    if (error) {
+      console.error("fetchWixTemplateSkuSet error:", error.message);
+      break;
+    }
+
+    if (!data || data.length === 0) break;
+
+    allSkus.push(...data.map((row: { sku: string }) => row.sku));
+    offset += pageSize;
+
+    if (data.length < pageSize) break;
+  }
+
+  return new Set(allSkus);
+}
+
 export async function fetchProductsByFocus(
   focus: string,
   limit: number

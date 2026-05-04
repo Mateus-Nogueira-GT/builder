@@ -211,7 +211,7 @@ export default function AtualizarTamanhosPage() {
                   <p className="text-zinc-300 font-bold text-lg">
                     {activeJob.counts.missing}
                   </p>
-                  <p className="text-zinc-500">Sem tamanho no catálogo</p>
+                  <p className="text-zinc-500">Fora da lista</p>
                 </div>
                 <div className="rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2">
                   <p className="text-zinc-300 font-bold text-lg">
