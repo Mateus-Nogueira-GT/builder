@@ -219,7 +219,7 @@ async function patchProductOptionsV1(
  * Se V3 retornar 404/400 indicando que o produto não existe no V3 catalog,
  * cai pro V1.
  */
-async function patchProductOptions(
+export async function patchProductOptions(
   apiKey: string,
   siteId: string,
   productId: string,

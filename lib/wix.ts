@@ -9,6 +9,7 @@
 
 import type { WixCollectionField, PreflightResult, PreflightCheck } from "./schemas";
 import { getOAuthToken } from "./wixOAuth";
+import { patchProductOptions } from "./sizeMigration";
 
 const WIX_API_BASE = "https://www.wixapis.com/wix-data/v2";
 const WIX_SITE_PROPERTIES_API = "https://www.wixapis.com/site-properties/v4";
@@ -475,95 +476,88 @@ export async function publishSite(
 
 const WIX_STORES_API = "https://www.wixapis.com/stores/v1";
 
+type WixProductInput = {
+  name: string;
+  description: string;
+  productType: string;
+  priceData: { price: number; currency: string };
+  sku: string;
+  media: { items: Array<{ image: { url: string } }> };
+  visible: boolean;
+  productOptions?: Array<{
+    optionType: string;
+    name: string;
+    choices: Array<{ value: string; description: string }>;
+  }>;
+  manageVariants?: boolean;
+};
+
 /**
- * Creates a single product in the Wix store.
+ * Creates a single product in the Wix store. Returns the new product ID.
  */
 export async function createProduct(
   apiKey: string,
   siteId: string,
-  product: {
-    name: string;
-    description: string;
-    productType: string;
-    priceData: { price: number; currency: string };
-    sku: string;
-    media: { items: Array<{ image: { url: string } }> };
-    visible: boolean;
-    productOptions?: Array<{
-      optionType: string;
-      name: string;
-      choices: Array<{ value: string; description: string }>;
-    }>;
-    manageVariants?: boolean;
-  }
-): Promise<void> {
-  await withRetry(async () => {
-    if (product.productOptions && product.productOptions.length > 0) {
-      console.log(
-        `[createProduct] sending with options sku=${product.sku}:`,
-        JSON.stringify({ productOptions: product.productOptions, manageVariants: product.manageVariants })
-      );
-    }
-    try {
-      const response = await wixFetch(`${WIX_STORES_API}/products`, {
-        apiKey,
-        siteId,
-        method: "POST",
-        body: { product },
-      });
-      if (product.productOptions && product.productOptions.length > 0) {
-        console.log(
-          `[createProduct] response sku=${product.sku}:`,
-          JSON.stringify(response).slice(0, 800)
-        );
-      }
-    } catch (err) {
-      console.error(
-        `[createProduct] FAILED sku=${product.sku} hasOptions=${!!product.productOptions?.length}:`,
-        err instanceof Error ? err.message : err
-      );
-      throw err;
-    }
+  product: WixProductInput
+): Promise<string | null> {
+  return withRetry(async () => {
+    const response = await wixFetch(`${WIX_STORES_API}/products`, {
+      apiKey,
+      siteId,
+      method: "POST",
+      body: { product },
+    });
+    const data = (await response.json().catch(() => null)) as
+      | { product?: { id?: string } }
+      | null;
+    return data?.product?.id ?? null;
   }, 2);
 }
 
 /**
- * Creates multiple products with rate limiting.
- * Returns count of created and failed products.
+ * Creates multiple products with rate limiting. After each create,
+ * if the product had productOptions, applies them via V3 PATCH (with V1
+ * fallback) — V1 OAuth tokens silently drop options on POST, so we
+ * re-apply explicitly.
  */
 export async function createProducts(
   apiKey: string,
   siteId: string,
-  products: Array<{
-    name: string;
-    description: string;
-    productType: string;
-    priceData: { price: number; currency: string };
-    sku: string;
-    media: { items: Array<{ image: { url: string } }> };
-    visible: boolean;
-    productOptions?: Array<{
-      optionType: string;
-      name: string;
-      choices: Array<{ value: string; description: string }>;
-    }>;
-    manageVariants?: boolean;
-  }>
-): Promise<{ created: number; failed: number }> {
+  products: Array<WixProductInput>
+): Promise<{ created: number; failed: number; optionsApplied: number; optionsFailed: number }> {
   let created = 0;
   let failed = 0;
+  let optionsApplied = 0;
+  let optionsFailed = 0;
 
   for (const product of products) {
+    let productId: string | null = null;
     try {
-      await createProduct(apiKey, siteId, product);
+      productId = await createProduct(apiKey, siteId, product);
       created++;
     } catch (err) {
       console.error(`Failed to create product "${product.name}":`, err instanceof Error ? err.message : err);
       failed++;
     }
+
+    const sizes = product.productOptions?.[0]?.choices?.map((c) => c.value) ?? [];
+    if (productId && sizes.length > 0) {
+      const result = await patchProductOptions(apiKey, siteId, productId, sizes);
+      if (result.ok) {
+        optionsApplied++;
+      } else {
+        optionsFailed++;
+        console.warn(
+          `[createProducts] PATCH options falhou sku=${product.sku} id=${productId}: ${result.error}`
+        );
+      }
+      // small delay between PATCH and next create to respect rate limits
+      await new Promise((r) => setTimeout(r, 250));
+    }
+
     // 200ms delay between products to respect rate limits
     await new Promise((r) => setTimeout(r, 200));
   }
 
-  return { created, failed };
+  return { created, failed, optionsApplied, optionsFailed };
 }
