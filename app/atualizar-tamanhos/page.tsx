@@ -194,7 +194,7 @@ export default function AtualizarTamanhosPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="grid grid-cols-3 gap-3 text-xs">
                 <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
                   <p className="text-emerald-400 font-bold text-lg">
                     {activeJob.counts.updated}
@@ -206,12 +206,6 @@ export default function AtualizarTamanhosPage() {
                     {activeJob.counts.skipped}
                   </p>
                   <p className="text-zinc-500">Já tinham tamanho</p>
-                </div>
-                <div className="rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2">
-                  <p className="text-zinc-300 font-bold text-lg">
-                    {activeJob.counts.missing}
-                  </p>
-                  <p className="text-zinc-500">Fora da lista</p>
                 </div>
                 <div className="rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2">
                   <p className="text-zinc-300 font-bold text-lg">
