@@ -494,6 +494,7 @@ export async function createProduct(
       name: string;
       choices: Array<{ value: string; description: string }>;
     }>;
+    manageVariants?: boolean;
   }
 ): Promise<void> {
   await withRetry(async () => {
@@ -526,6 +527,7 @@ export async function createProducts(
       name: string;
       choices: Array<{ value: string; description: string }>;
     }>;
+    manageVariants?: boolean;
   }>
 ): Promise<{ created: number; failed: number }> {
   let created = 0;
