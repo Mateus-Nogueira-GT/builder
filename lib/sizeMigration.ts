@@ -173,9 +173,10 @@ async function patchProductOptionsV1(
 }
 
 /**
- * Tenta V3 primeiro (sites criados via marketplace redemption são V3).
- * Se V3 retornar 404/400 indicando que o produto não existe no V3 catalog,
- * cai pro V1.
+ * Tenta V1 primeiro porque o admin/storefront da Wix le do catalogo V1 —
+ * V3 PATCH retorna 200 mas nao propaga pra V1, gerando "fantasmas" (DB diz
+ * que aplicou mas a loja nao mostra). Cai pro V3 apenas se V1 retornar 404
+ * (caso de sites V3-only de marketplace redemption).
  */
 export async function patchProductOptions(
   apiKey: string,
@@ -183,16 +184,22 @@ export async function patchProductOptions(
   productId: string,
   sizes: string[]
 ): Promise<{ ok: boolean; error?: string }> {
-  const v3 = await patchProductOptionsV3(apiKey, siteId, productId, sizes);
-  if (v3.ok) return { ok: true };
-
-  // V3 falhou — tenta V1 como fallback (sites antigos)
   const v1 = await patchProductOptionsV1(apiKey, siteId, productId, sizes);
   if (v1.ok) return { ok: true };
 
+  // V1 falhou com 404 — produto pode existir so no V3 (sites novos)
+  if (v1.status === 404) {
+    const v3 = await patchProductOptionsV3(apiKey, siteId, productId, sizes);
+    if (v3.ok) return { ok: true };
+    return {
+      ok: false,
+      error: `V1:404 | V3:${v3.status} | ${v3.error}`,
+    };
+  }
+
   return {
     ok: false,
-    error: `V3:${v3.status} | V1:${v1.status} | ${v1.error}`,
+    error: `V1:${v1.status} | ${v1.error}`,
   };
 }
 
