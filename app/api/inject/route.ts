@@ -317,6 +317,18 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
     try {
         const focus = (onboarding.focus as string) || 'todos';
         const initialProducts = await fetchProductsByFocus(focus, 100);
+        const sizesStats = {
+            total: initialProducts.length,
+            withSizes: initialProducts.filter((p) => Array.isArray(p.sizes) && p.sizes.length > 0).length,
+            sampleSizes: initialProducts.find((p) => Array.isArray(p.sizes) && p.sizes.length > 0)?.sizes ?? null,
+            sampleSku: initialProducts.find((p) => Array.isArray(p.sizes) && p.sizes.length > 0)?.sku ?? null,
+        };
+        console.log('[inject] catalog sizes stats:', JSON.stringify(sizesStats));
+        await appendProvisionLog(
+            runId,
+            createLog(`Catálogo: ${sizesStats.withSizes}/${sizesStats.total} produtos com tamanhos. Exemplo: ${JSON.stringify(sizesStats.sampleSizes)}`, 'running', 'products'),
+            { status: 'running', currentStep: 'products' }
+        );
         if (initialProducts.length > 0) {
             const wixProducts = initialProducts.map((p) => mapToWixProduct(p, { withSizes: true }));
             const result = await createProducts(authToken, siteId, wixProducts);

@@ -498,12 +498,32 @@ export async function createProduct(
   }
 ): Promise<void> {
   await withRetry(async () => {
-    await wixFetch(`${WIX_STORES_API}/products`, {
-      apiKey,
-      siteId,
-      method: "POST",
-      body: { product },
-    });
+    if (product.productOptions && product.productOptions.length > 0) {
+      console.log(
+        `[createProduct] sending with options sku=${product.sku}:`,
+        JSON.stringify({ productOptions: product.productOptions, manageVariants: product.manageVariants })
+      );
+    }
+    try {
+      const response = await wixFetch(`${WIX_STORES_API}/products`, {
+        apiKey,
+        siteId,
+        method: "POST",
+        body: { product },
+      });
+      if (product.productOptions && product.productOptions.length > 0) {
+        console.log(
+          `[createProduct] response sku=${product.sku}:`,
+          JSON.stringify(response).slice(0, 800)
+        );
+      }
+    } catch (err) {
+      console.error(
+        `[createProduct] FAILED sku=${product.sku} hasOptions=${!!product.productOptions?.length}:`,
+        err instanceof Error ? err.message : err
+      );
+      throw err;
+    }
   }, 2);
 }
 
