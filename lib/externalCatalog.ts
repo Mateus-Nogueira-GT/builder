@@ -84,10 +84,13 @@ export async function fetchProducts(
 }
 
 export async function fetchWixTemplateSkuSet(): Promise<Set<string>> {
-  const allSkus: string[] = [];
-  let offset = 0;
+  const skuSet = new Set<string>();
   const pageSize = 1000;
 
+  // Fonte 1: tabela wix_template_skus (template original — SKUs SKUF*/SKUM*).
+  // Mantida pra que jobs retroativos em lojas antigas (ex.: Futsports)
+  // continuem casando.
+  let offset = 0;
   while (true) {
     const { data, error } = await getExternalSupabase()
       .from("wix_template_skus")
@@ -95,19 +98,41 @@ export async function fetchWixTemplateSkuSet(): Promise<Set<string>> {
       .range(offset, offset + pageSize - 1);
 
     if (error) {
-      console.error("fetchWixTemplateSkuSet error:", error.message);
+      console.error("fetchWixTemplateSkuSet error (wix_template_skus):", error.message);
       break;
     }
-
     if (!data || data.length === 0) break;
-
-    allSkus.push(...data.map((row: { sku: string }) => row.sku));
-    offset += pageSize;
-
+    for (const row of data as Array<{ sku: string }>) skuSet.add(row.sku);
     if (data.length < pageSize) break;
+    offset += pageSize;
   }
 
-  return new Set(allSkus);
+  // Fonte 2: catalog_products com sizes nao-vazio (template novo —
+  // SKUs do catalogo SKU2600*, SKUTM*, SKU060*, SKUTF*, etc). Cobre lojas
+  // novas onde o template Wix vem com produtos do catalogo direto.
+  offset = 0;
+  while (true) {
+    const { data, error } = await getExternalSupabase()
+      .from("catalog_products")
+      .select("sku, sizes")
+      .not("sku", "is", null)
+      .range(offset, offset + pageSize - 1);
+
+    if (error) {
+      console.error("fetchWixTemplateSkuSet error (catalog_products):", error.message);
+      break;
+    }
+    if (!data || data.length === 0) break;
+    for (const row of data as Array<{ sku: string; sizes: string[] | null }>) {
+      if (row.sku && Array.isArray(row.sizes) && row.sizes.length > 0) {
+        skuSet.add(row.sku);
+      }
+    }
+    if (data.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  return skuSet;
 }
 
 export async function fetchProductsByFocus(

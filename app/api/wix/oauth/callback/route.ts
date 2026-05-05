@@ -94,10 +94,7 @@ export async function GET(request: Request) {
         const r = await kickoffSizeUpdateJob({
           storeId,
           siteId,
-          // Sentinel "system@webhook" desativa allowlist no /process —
-          // templates novos tem SKUs de catalogo que nao casam com
-          // wix_template_skus. Aplicamos sizes em todo produto sem options.
-          ownerEmail: "system@webhook",
+          ownerEmail: storeRow?.owner_email ?? null,
           authHeader: accessToken,
           baseUrl,
         });

@@ -106,20 +106,9 @@ export async function POST(request: Request) {
         WIX_ADMIN_API_KEY ||
         (await resolveAuthHeader("", store?.wix_instance_id ?? null));
 
-      // Bypass do allowlist quando o job veio do webhook automatico
-      // (owner_email = "system@webhook"). Templates novos vem com SKUs do
-      // catalogo (SKU2600*, SKUTM*, etc) que nao casam com a allowlist
-      // wix_template_skus (SKUF*/SKUM*). Pra esses, aplicamos DEFAULT_SIZES
-      // em todos os produtos sem options.
-      const isAutoJob = job.owner_email === "system@webhook";
-      const effectiveAllowedSkus = isAutoJob ? undefined : allowedSkus;
-      if (isAutoJob && batchesRun === 0) {
-        console.log(`[atualizar-tamanhos/process] job=${job.id} auto-mode: allowlist DESATIVADA`);
-      }
-
       let batchResult;
       try {
-        batchResult = await processSizeBatch(authHeader, siteId, offset, batchSize, effectiveAllowedSkus);
+        batchResult = await processSizeBatch(authHeader, siteId, offset, batchSize, allowedSkus);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Erro desconhecido";
         console.error(`[atualizar-tamanhos/process] job=${job.id} batch=${batchesRun} falhou:`, msg);
