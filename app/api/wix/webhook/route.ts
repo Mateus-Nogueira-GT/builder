@@ -38,8 +38,10 @@ export async function GET(request: Request) {
   // Process the installation redirect
   try {
     const accessToken = await getOAuthToken(instanceId);
-    await updatePendingStore(instanceId, accessToken);
-    await tryKickoffSizeJob(request, instanceId, accessToken);
+    const store = await updatePendingStore(instanceId, accessToken);
+    if (store) {
+      await tryKickoffSizeJob(request, instanceId, accessToken, store);
+    }
   } catch (err) {
     console.error("[Wix Webhook GET] Error processing:", err);
   }
@@ -102,8 +104,10 @@ export async function POST(request: Request) {
     // Get access token and update store
     try {
       const accessToken = await getOAuthToken(instanceId);
-      await updatePendingStore(instanceId, accessToken);
-      await tryKickoffSizeJob(request, instanceId, accessToken);
+      const store = await updatePendingStore(instanceId, accessToken);
+      if (store) {
+        await tryKickoffSizeJob(request, instanceId, accessToken, store);
+      }
     } catch (err) {
       console.error("[Wix Webhook POST] Failed to process:", err);
     }
@@ -115,31 +119,24 @@ export async function POST(request: Request) {
   }
 }
 
+interface StoreRow {
+  id: string;
+  wix_site_id: string | null;
+  owner_email: string | null;
+}
+
 /**
- * Localiza a store referente ao instanceId, resolve o siteId via Wix Apps API
- * (templates Wix instalam ~2731 produtos com SKUs do template, que casam com a
- * allowlist wix_template_skus), salva siteId no DB e dispara size_update_job
- * fire-and-forget. Idempotente: kickoff devolve job existente se ja roda.
+ * Resolve siteId via Wix Apps API se ainda 'pending', salva no DB,
+ * e dispara size_update_job fire-and-forget. Recebe a store ja resolvida
+ * pra evitar race entre INSERT e SELECT no pooler do Supabase.
  */
 async function tryKickoffSizeJob(
   request: Request,
   instanceId: string,
-  accessToken: string
+  accessToken: string,
+  store: StoreRow
 ): Promise<void> {
   try {
-    const { data: store } = await supabase
-      .from("stores")
-      .select("id, wix_site_id, owner_email")
-      .eq("wix_instance_id", instanceId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    if (!store) {
-      console.warn(`[Wix Webhook] tryKickoffSizeJob: store nao encontrada pra instance=${instanceId}`);
-      return;
-    }
-
     let siteId = store.wix_site_id;
     if (!siteId || siteId === "pending") {
       const fetched = await fetchSiteIdFromInstance(instanceId);
@@ -172,7 +169,16 @@ async function tryKickoffSizeJob(
   }
 }
 
-async function updatePendingStore(instanceId: string, accessToken: string) {
+/**
+ * Atualiza a store pendente OU insere uma nova com o instanceId. Em ambos
+ * os casos, retorna a row resultante (id, wix_site_id, owner_email) usando
+ * .select().single() — assim o caller nao precisa fazer um SELECT separado
+ * (que estava falhando por race do pooler).
+ */
+async function updatePendingStore(
+  instanceId: string,
+  accessToken: string
+): Promise<StoreRow | null> {
   const { data: pendingStore } = await supabase
     .from("stores")
     .select("id")
@@ -183,13 +189,23 @@ async function updatePendingStore(instanceId: string, accessToken: string) {
     .single();
 
   if (pendingStore) {
-    await supabase
+    const { data, error } = await supabase
       .from("stores")
       .update({ wix_instance_id: instanceId, wix_api_key: accessToken })
-      .eq("id", pendingStore.id);
-    console.log(`[Wix Webhook] Updated store ${pendingStore.id} with instanceId=${instanceId}`);
-  } else {
-    await supabase.from("stores").insert({
+      .eq("id", pendingStore.id)
+      .select("id, wix_site_id, owner_email")
+      .single();
+    if (error || !data) {
+      console.error(`[Wix Webhook] Falha ao atualizar store ${pendingStore.id}:`, error?.message);
+      return null;
+    }
+    console.log(`[Wix Webhook] Updated store ${data.id} with instanceId=${instanceId}`);
+    return data as StoreRow;
+  }
+
+  const { data, error } = await supabase
+    .from("stores")
+    .insert({
       name: "Nova Loja",
       wix_instance_id: instanceId,
       wix_api_key: accessToken,
@@ -198,7 +214,13 @@ async function updatePendingStore(instanceId: string, accessToken: string) {
       connection_method: "oauth",
       primary_color: "#10b981",
       secondary_color: "#18181b",
-    });
-    console.log(`[Wix Webhook] Created new store with instanceId=${instanceId}`);
+    })
+    .select("id, wix_site_id, owner_email")
+    .single();
+  if (error || !data) {
+    console.error(`[Wix Webhook] Falha ao criar store pra instance=${instanceId}:`, error?.message);
+    return null;
   }
+  console.log(`[Wix Webhook] Created new store ${data.id} with instanceId=${instanceId}`);
+  return data as StoreRow;
 }
