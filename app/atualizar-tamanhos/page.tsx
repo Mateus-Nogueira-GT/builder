@@ -162,76 +162,32 @@ export default function AtualizarTamanhosPage() {
         {/* Job ativo */}
         {activeJob && (
           <Card className="border-zinc-800 bg-zinc-900">
-            <CardHeader>
-              <CardTitle className="text-white text-lg flex items-center gap-2">
-                {activeJob.status === "running" && (
-                  <Loader2 className="h-5 w-5 animate-spin text-emerald-500" />
-                )}
-                {activeJob.status === "completed" && (
-                  <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-                )}
-                {activeJob.status === "failed" && (
-                  <XCircle className="h-5 w-5 text-red-500" />
-                )}
-                {activeJob.status === "running" && "Processando..."}
-                {activeJob.status === "completed" && "Atualização concluída!"}
-                {activeJob.status === "failed" && "Falha na atualização"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div>
-                <div className="flex justify-between text-sm text-zinc-400 mb-2">
-                  <span>
-                    {activeJob.processed} de {activeJob.total} produtos
-                  </span>
-                  <span className="font-medium text-white">{activeJob.percent}%</span>
-                </div>
-                <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 transition-all duration-500"
-                    style={{ width: `${activeJob.percent}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3 text-xs">
-                <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
-                  <p className="text-emerald-400 font-bold text-lg">
-                    {activeJob.counts.updated}
-                  </p>
-                  <p className="text-zinc-400">Atualizados</p>
-                </div>
-                <div className="rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2">
-                  <p className="text-zinc-300 font-bold text-lg">
-                    {activeJob.counts.skipped}
-                  </p>
-                  <p className="text-zinc-500">Já tinham tamanho</p>
-                </div>
-                <div className="rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2">
-                  <p className="text-zinc-300 font-bold text-lg">
-                    {activeJob.counts.failed}
-                  </p>
-                  <p className="text-zinc-500">Falhas</p>
-                </div>
-              </div>
-
+            <CardContent className="py-8">
               {activeJob.status === "running" && (
-                <p className="text-xs text-zinc-500 text-center">
-                  Você pode fechar esta página — a atualização continua em segundo plano.
-                  Volte aqui depois para ver o resultado.
-                </p>
+                <div className="flex items-start gap-3 text-sm leading-relaxed text-zinc-200">
+                  <Loader2 className="h-5 w-5 mt-0.5 shrink-0 animate-spin text-emerald-500" />
+                  <p>
+                    Pronto, os produtos estão sendo atualizados. O processo de
+                    atualização leva em média 60 minutos. Em breve seus produtos
+                    estarão atualizados no site
+                  </p>
+                </div>
               )}
 
               {activeJob.status === "completed" && (
-                <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-4 text-sm text-emerald-300">
-                  Sua loja foi atualizada. Os produtos agora aparecem com o seletor
-                  de tamanho na sua loja Wix.
+                <div className="flex items-start gap-3 text-sm leading-relaxed text-emerald-300">
+                  <CheckCircle2 className="h-5 w-5 mt-0.5 shrink-0 text-emerald-500" />
+                  <p>
+                    Sua loja foi atualizada. Os produtos agora aparecem com o seletor
+                    de tamanho na sua loja Wix.
+                  </p>
                 </div>
               )}
 
-              {activeJob.status === "failed" && activeJob.errorMessage && (
-                <div className="rounded-lg bg-red-500/5 border border-red-500/20 p-4 text-sm text-red-300">
-                  {activeJob.errorMessage}
+              {activeJob.status === "failed" && (
+                <div className="flex items-start gap-3 text-sm leading-relaxed text-red-300">
+                  <XCircle className="h-5 w-5 mt-0.5 shrink-0 text-red-500" />
+                  <p>{activeJob.errorMessage || "Falha na atualização."}</p>
                 </div>
               )}
             </CardContent>
