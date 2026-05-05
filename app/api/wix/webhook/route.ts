@@ -163,7 +163,9 @@ async function tryKickoffSizeJob(
       const r = await kickoffSizeUpdateJob({
         storeId: store.id,
         siteId,
-        ownerEmail: store.owner_email ?? null,
+        // Sentinel: marca job como "auto-mode" pra /process bypassar a
+        // allowlist wix_template_skus (que nao cobre SKUs do catalogo).
+        ownerEmail: "system@webhook",
         authHeader,
         baseUrl,
       });
@@ -181,7 +183,9 @@ async function tryKickoffSizeJob(
           const r = await kickoffSizeUpdateJob({
             storeId: store.id,
             siteId,
-            ownerEmail: store.owner_email ?? null,
+            // Sentinel: marca job como "auto-mode" pra /process bypassar a
+        // allowlist wix_template_skus (que nao cobre SKUs do catalogo).
+        ownerEmail: "system@webhook",
             authHeader: accessToken,
             baseUrl,
           });
