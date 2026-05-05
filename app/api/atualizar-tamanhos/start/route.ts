@@ -73,8 +73,10 @@ export async function POST(request: Request) {
       console.log(`[atualizar-tamanhos/start] siteId salvo: ${siteId}`);
     }
 
-    // Resolve auth: prioriza OAuth token (do instanceId), com fallback pra admin key
-    const authHeader = await resolveAuthHeader(WIX_ADMIN_API_KEY, store.wix_instance_id);
+    // Prefere admin key direto (scopes plenos). OAuth do instanceId so vira
+    // fallback caso WIX_ADMIN_API_KEY nao esteja setada.
+    const authHeader =
+      WIX_ADMIN_API_KEY || (await resolveAuthHeader("", store.wix_instance_id));
 
     let kickoff;
     try {
