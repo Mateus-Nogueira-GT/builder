@@ -87,24 +87,26 @@ export async function GET(request: Request) {
         .eq("id", storeId)
         .single();
 
-      kickoffSizeUpdateJob({
-        storeId,
-        siteId,
-        ownerEmail: storeRow?.owner_email ?? null,
-        authHeader: accessToken,
-        baseUrl,
-      })
-        .then((r) =>
-          console.log(
-            `[OAuth Callback] kickoff size job ${r.jobId} total=${r.totalProducts} alreadyRunning=${r.alreadyRunning}`
-          )
-        )
-        .catch((err) =>
-          console.warn(
-            "[OAuth Callback] kickoffSizeUpdateJob falhou:",
-            err instanceof Error ? err.message : err
-          )
+      // Awaitar — em serverless, fire-and-forget e cancelado quando a function
+      // retorna o redirect. Awaitando garantimos que a row em size_update_jobs
+      // foi criada antes da function morrer; cron do Vercel cuida do resto.
+      try {
+        const r = await kickoffSizeUpdateJob({
+          storeId,
+          siteId,
+          ownerEmail: storeRow?.owner_email ?? null,
+          authHeader: accessToken,
+          baseUrl,
+        });
+        console.log(
+          `[OAuth Callback] kickoff size job ${r.jobId} total=${r.totalProducts} alreadyRunning=${r.alreadyRunning}`
         );
+      } catch (err) {
+        console.warn(
+          "[OAuth Callback] kickoffSizeUpdateJob falhou:",
+          err instanceof Error ? err.message : err
+        );
+      }
     }
 
     return NextResponse.redirect(new URL(successPath, request.url));

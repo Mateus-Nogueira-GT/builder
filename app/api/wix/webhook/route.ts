@@ -149,21 +149,25 @@ async function tryKickoffSizeJob(
     }
 
     const baseUrl = getPublicBaseUrl(request);
-    kickoffSizeUpdateJob({
-      storeId: store.id,
-      siteId,
-      ownerEmail: store.owner_email ?? null,
-      authHeader: accessToken,
-      baseUrl,
-    })
-      .then((r) =>
-        console.log(
-          `[Wix Webhook] kickoff size job ${r.jobId} total=${r.totalProducts} alreadyRunning=${r.alreadyRunning}`
-        )
-      )
-      .catch((err) =>
-        console.warn("[Wix Webhook] kickoffSizeUpdateJob falhou:", err instanceof Error ? err.message : err)
+    // IMPORTANTE: awaitar (nao fire-and-forget). Em serverless, a function
+    // morre apos return e cancela promises pendentes — incluindo o INSERT
+    // em size_update_jobs. Awaitando garantimos que a row foi criada.
+    // O fetch interno do kickoff pra /process eh fire-and-forget mas o cron
+    // do Vercel cuida de continuar.
+    try {
+      const r = await kickoffSizeUpdateJob({
+        storeId: store.id,
+        siteId,
+        ownerEmail: store.owner_email ?? null,
+        authHeader: accessToken,
+        baseUrl,
+      });
+      console.log(
+        `[Wix Webhook] kickoff size job ${r.jobId} total=${r.totalProducts} alreadyRunning=${r.alreadyRunning}`
       );
+    } catch (err) {
+      console.warn("[Wix Webhook] kickoffSizeUpdateJob falhou:", err instanceof Error ? err.message : err);
+    }
   } catch (err) {
     console.warn("[Wix Webhook] tryKickoffSizeJob exception:", err instanceof Error ? err.message : err);
   }
