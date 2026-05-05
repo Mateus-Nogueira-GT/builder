@@ -232,6 +232,25 @@ export async function processSizeBatch(
   let failed = 0;
   const filterActive = !!(allowedSkus && allowedSkus.size > 0);
 
+  // DIAG (so primeiro batch): loga exemplos de SKU que vem da Wix e diz se
+  // batem com a allowlist. Util pra debugar 'missing=total' (todos descartados).
+  if (offset === 0 && products.length > 0) {
+    const samples = products.slice(0, 5).map((p) => {
+      const sku = extractProductSku(p);
+      return {
+        id: p.id,
+        sku,
+        sku_in_allowlist: sku ? allowedSkus?.has(sku) ?? null : null,
+        has_top_sku: !!p.sku,
+        has_variant_sku: !!p.variants?.[0]?.sku,
+      };
+    });
+    console.log(
+      `[sizeMigration] DIAG batch0 | filterActive=${filterActive} | allowlistSize=${allowedSkus?.size ?? 0} | samples=`,
+      JSON.stringify(samples)
+    );
+  }
+
   for (const p of products) {
     if (filterActive) {
       const sku = extractProductSku(p);
