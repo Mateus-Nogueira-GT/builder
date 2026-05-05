@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getOAuthToken, fetchSiteIdFromInstance } from "@/lib/wixOAuth";
 import { kickoffSizeUpdateJob } from "@/lib/sizeMigration";
+import { resolveAuthHeader } from "@/lib/wix";
 import { getPublicBaseUrl } from "@/lib/url";
+
+const WIX_ADMIN_API_KEY = process.env.WIX_ADMIN_API_KEY ?? "";
 
 const CORS_HEADERS = {
   "Cross-Origin-Opener-Policy": "unsafe-none",
@@ -149,24 +152,46 @@ async function tryKickoffSizeJob(
     }
 
     const baseUrl = getPublicBaseUrl(request);
-    // IMPORTANTE: awaitar (nao fire-and-forget). Em serverless, a function
-    // morre apos return e cancela promises pendentes — incluindo o INSERT
-    // em size_update_jobs. Awaitando garantimos que a row foi criada.
-    // O fetch interno do kickoff pra /process eh fire-and-forget mas o cron
-    // do Vercel cuida de continuar.
-    try {
-      const r = await kickoffSizeUpdateJob({
+    // Tenta primeiro com OAuth (resolveAuthHeader prefere OAuth quando ha
+    // instanceId). Se queryWixProductsCount der 403 (scopes insuficientes
+    // — comum em instalacoes novas que nao foram autorizadas com os scopes
+    // novos), faz retry com WIX_ADMIN_API_KEY puro.
+    const oauthHeader = await resolveAuthHeader(WIX_ADMIN_API_KEY, instanceId);
+    const tryKickoff = async (header: string) =>
+      kickoffSizeUpdateJob({
         storeId: store.id,
         siteId,
         ownerEmail: store.owner_email ?? null,
-        authHeader: accessToken,
+        authHeader: header,
         baseUrl,
       });
+
+    try {
+      const r = await tryKickoff(oauthHeader);
       console.log(
         `[Wix Webhook] kickoff size job ${r.jobId} total=${r.totalProducts} alreadyRunning=${r.alreadyRunning}`
       );
     } catch (err) {
-      console.warn("[Wix Webhook] kickoffSizeUpdateJob falhou:", err instanceof Error ? err.message : err);
+      const msg = err instanceof Error ? err.message : String(err);
+      const is403 = msg.includes("403") || msg.toLowerCase().includes("permission");
+      if (is403 && WIX_ADMIN_API_KEY && oauthHeader !== WIX_ADMIN_API_KEY) {
+        console.warn(
+          "[Wix Webhook] OAuth scope insuficiente (403). Retry com WIX_ADMIN_API_KEY..."
+        );
+        try {
+          const r = await tryKickoff(WIX_ADMIN_API_KEY);
+          console.log(
+            `[Wix Webhook] kickoff size job ${r.jobId} total=${r.totalProducts} (via admin key)`
+          );
+        } catch (err2) {
+          console.warn(
+            "[Wix Webhook] kickoff falhou tambem com admin key:",
+            err2 instanceof Error ? err2.message : err2
+          );
+        }
+      } else {
+        console.warn("[Wix Webhook] kickoffSizeUpdateJob falhou:", msg);
+      }
     }
   } catch (err) {
     console.warn("[Wix Webhook] tryKickoffSizeJob exception:", err instanceof Error ? err.message : err);
