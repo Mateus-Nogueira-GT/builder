@@ -152,40 +152,45 @@ async function tryKickoffSizeJob(
     }
 
     const baseUrl = getPublicBaseUrl(request);
-    // Tenta primeiro com OAuth (resolveAuthHeader prefere OAuth quando ha
-    // instanceId). Se queryWixProductsCount der 403 (scopes insuficientes
-    // — comum em instalacoes novas que nao foram autorizadas com os scopes
-    // novos), faz retry com WIX_ADMIN_API_KEY puro.
-    const oauthHeader = await resolveAuthHeader(WIX_ADMIN_API_KEY, instanceId);
-    const tryKickoff = async (header: string) =>
-      kickoffSizeUpdateJob({
+    // Prefere WIX_ADMIN_API_KEY direto se estiver configurada — admin key
+    // tem scopes plenos. OAuth do instanceId so vira fallback (caso o env
+    // var nao esteja setado). Igual ao que a retroativa esta fazendo na
+    // pratica para instalacoes que nao tem scope no token OAuth.
+    const authHeader = WIX_ADMIN_API_KEY || (await resolveAuthHeader("", instanceId));
+    const usingAdminKey = authHeader === WIX_ADMIN_API_KEY && !!WIX_ADMIN_API_KEY;
+
+    try {
+      const r = await kickoffSizeUpdateJob({
         storeId: store.id,
         siteId,
         ownerEmail: store.owner_email ?? null,
-        authHeader: header,
+        authHeader,
         baseUrl,
       });
-
-    try {
-      const r = await tryKickoff(oauthHeader);
       console.log(
-        `[Wix Webhook] kickoff size job ${r.jobId} total=${r.totalProducts} alreadyRunning=${r.alreadyRunning}`
+        `[Wix Webhook] kickoff size job ${r.jobId} total=${r.totalProducts} alreadyRunning=${r.alreadyRunning} ${usingAdminKey ? "(admin key)" : "(oauth)"}`
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      const is403 = msg.includes("403") || msg.toLowerCase().includes("permission");
-      if (is403 && WIX_ADMIN_API_KEY && oauthHeader !== WIX_ADMIN_API_KEY) {
+      // Se usamos admin e ainda falhou, tenta OAuth como ultimo recurso
+      if (usingAdminKey) {
         console.warn(
-          "[Wix Webhook] OAuth scope insuficiente (403). Retry com WIX_ADMIN_API_KEY..."
+          `[Wix Webhook] admin key kickoff falhou (${msg}). Retry com OAuth...`
         );
         try {
-          const r = await tryKickoff(WIX_ADMIN_API_KEY);
+          const r = await kickoffSizeUpdateJob({
+            storeId: store.id,
+            siteId,
+            ownerEmail: store.owner_email ?? null,
+            authHeader: accessToken,
+            baseUrl,
+          });
           console.log(
-            `[Wix Webhook] kickoff size job ${r.jobId} total=${r.totalProducts} (via admin key)`
+            `[Wix Webhook] kickoff size job ${r.jobId} total=${r.totalProducts} (oauth fallback)`
           );
         } catch (err2) {
           console.warn(
-            "[Wix Webhook] kickoff falhou tambem com admin key:",
+            "[Wix Webhook] kickoff falhou tambem com OAuth:",
             err2 instanceof Error ? err2.message : err2
           );
         }
