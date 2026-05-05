@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { getOAuthToken } from "@/lib/wixOAuth";
+import { getOAuthToken, fetchSiteIdFromInstance } from "@/lib/wixOAuth";
+import { kickoffSizeUpdateJob } from "@/lib/sizeMigration";
+import { getPublicBaseUrl } from "@/lib/url";
 
 const CORS_HEADERS = {
   "Cross-Origin-Opener-Policy": "unsafe-none",
@@ -37,6 +39,7 @@ export async function GET(request: Request) {
   try {
     const accessToken = await getOAuthToken(instanceId);
     await updatePendingStore(instanceId, accessToken);
+    await tryKickoffSizeJob(request, instanceId, accessToken);
   } catch (err) {
     console.error("[Wix Webhook GET] Error processing:", err);
   }
@@ -100,6 +103,7 @@ export async function POST(request: Request) {
     try {
       const accessToken = await getOAuthToken(instanceId);
       await updatePendingStore(instanceId, accessToken);
+      await tryKickoffSizeJob(request, instanceId, accessToken);
     } catch (err) {
       console.error("[Wix Webhook POST] Failed to process:", err);
     }
@@ -108,6 +112,63 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("[Wix Webhook POST] Unhandled error:", err);
     return ok();
+  }
+}
+
+/**
+ * Localiza a store referente ao instanceId, resolve o siteId via Wix Apps API
+ * (templates Wix instalam ~2731 produtos com SKUs do template, que casam com a
+ * allowlist wix_template_skus), salva siteId no DB e dispara size_update_job
+ * fire-and-forget. Idempotente: kickoff devolve job existente se ja roda.
+ */
+async function tryKickoffSizeJob(
+  request: Request,
+  instanceId: string,
+  accessToken: string
+): Promise<void> {
+  try {
+    const { data: store } = await supabase
+      .from("stores")
+      .select("id, wix_site_id, owner_email")
+      .eq("wix_instance_id", instanceId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!store) {
+      console.warn(`[Wix Webhook] tryKickoffSizeJob: store nao encontrada pra instance=${instanceId}`);
+      return;
+    }
+
+    let siteId = store.wix_site_id;
+    if (!siteId || siteId === "pending") {
+      const fetched = await fetchSiteIdFromInstance(instanceId);
+      if (!fetched) {
+        console.warn(`[Wix Webhook] tryKickoffSizeJob: siteId nao resolveu pra instance=${instanceId}`);
+        return;
+      }
+      siteId = fetched;
+      await supabase.from("stores").update({ wix_site_id: siteId }).eq("id", store.id);
+    }
+
+    const baseUrl = getPublicBaseUrl(request);
+    kickoffSizeUpdateJob({
+      storeId: store.id,
+      siteId,
+      ownerEmail: store.owner_email ?? null,
+      authHeader: accessToken,
+      baseUrl,
+    })
+      .then((r) =>
+        console.log(
+          `[Wix Webhook] kickoff size job ${r.jobId} total=${r.totalProducts} alreadyRunning=${r.alreadyRunning}`
+        )
+      )
+      .catch((err) =>
+        console.warn("[Wix Webhook] kickoffSizeUpdateJob falhou:", err instanceof Error ? err.message : err)
+      );
+  } catch (err) {
+    console.warn("[Wix Webhook] tryKickoffSizeJob exception:", err instanceof Error ? err.message : err);
   }
 }
 
