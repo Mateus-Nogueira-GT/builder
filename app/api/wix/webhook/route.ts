@@ -183,10 +183,9 @@ async function updatePendingStore(
     .from("stores")
     .select("id")
     .eq("wix_site_id", "pending")
-    .eq("connection_method", "oauth")
     .order("created_at", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (pendingStore) {
     const { data, error } = await supabase
@@ -210,10 +209,6 @@ async function updatePendingStore(
       wix_instance_id: instanceId,
       wix_api_key: accessToken,
       wix_site_id: "pending",
-      wix_site_url: "",
-      connection_method: "oauth",
-      primary_color: "#10b981",
-      secondary_color: "#18181b",
     })
     .select("id, wix_site_id, owner_email")
     .single();
