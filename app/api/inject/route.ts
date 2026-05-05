@@ -104,25 +104,8 @@ export async function POST(request: Request) {
             },
         });
 
-        const usesInjectionStorage = (run.result as Record<string, unknown> | null)?.storage === 'injections';
-
-        let injectionId: string | null = usesInjectionStorage ? run.id : null;
-        if (resolvedStoreId && !usesInjectionStorage) {
-            const { data, error } = await supabase
-                .from('injections')
-                .insert({
-                    store_id: resolvedStoreId,
-                    payload,
-                    status: 'pending',
-                    result: { runId: run.id, logs: [] },
-                })
-                .select('id')
-                .single();
-
-            if (!error) {
-                injectionId = data.id;
-            }
-        }
+        // run.id é a id da row em `injections` — única fonte da verdade.
+        const injectionId: string = run.id;
 
         processProvisionRun(run.id, injectionId).catch(async (error) => {
             console.error('Provision process error:', error);
@@ -483,33 +466,13 @@ async function processProvisionRun(runId: string, injectionId: string | null) {
         siteUrl,
         completedAt: new Date().toISOString(),
     });
-
-    if (injectionId) {
-        await supabase
-            .from('injections')
-            .update({
-                status: published ? 'success' : 'partial',
-                result: (await getProvisionRun(runId)).result || { runId },
-            })
-            .eq('id', injectionId);
-    }
 }
 
-async function finalizeFailure(runId: string, injectionId: string | null, message: string) {
+async function finalizeFailure(runId: string, _injectionId: string | null, message: string) {
     await appendProvisionLog(runId, createLog(message, 'error'), {
         status: 'error',
         currentStep: null,
         lastError: message,
         completedAt: new Date().toISOString(),
     });
-
-    if (injectionId) {
-        await supabase
-            .from('injections')
-            .update({
-                status: 'error',
-                result: (await getProvisionRun(runId)).result || { error: message },
-            })
-            .eq('id', injectionId);
-    }
 }
