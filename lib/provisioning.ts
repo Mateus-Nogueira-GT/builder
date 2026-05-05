@@ -1,6 +1,14 @@
 import { supabase } from "./supabase";
 import type { ProvisionLog, ProvisionRun } from "./schemas";
 
+/**
+ * NOTA: a tabela `provision_runs` foi descontinuada. O storage real é
+ * `injections` (id, store_id, payload, status, result jsonb, created_at).
+ * O `site_id` mora dentro de `payload.siteId` (já é passado assim pelo
+ * inject route). Os campos extras de ProvisionRun (currentStep, lastError,
+ * completedAt, siteUrl) ficam dentro de `result`.
+ */
+
 /* ─────────────────────── Helpers ──────────────────────── */
 
 export function createLog(
@@ -16,6 +24,27 @@ export function createLog(
   };
 }
 
+interface InjectionRow {
+  id: string;
+  store_id: string | null;
+  payload: Record<string, unknown>;
+  status: string;
+  result: Record<string, unknown> | null;
+  created_at: string;
+}
+
+function toProvisionRun(row: InjectionRow): ProvisionRun {
+  return {
+    id: row.id,
+    store_id: row.store_id,
+    site_id: (row.payload?.siteId as string) ?? "",
+    payload: row.payload,
+    status: row.status as ProvisionRun["status"],
+    result: row.result as ProvisionRun["result"],
+    created_at: row.created_at,
+  };
+}
+
 /* ─────────────── Create / Read provision runs ─────────── */
 
 export async function createProvisionRun(params: {
@@ -23,12 +52,12 @@ export async function createProvisionRun(params: {
   siteId: string;
   payload: Record<string, unknown>;
 }): Promise<ProvisionRun> {
+  const payload = { ...params.payload, siteId: params.siteId };
   const { data, error } = await supabase
-    .from("provision_runs")
+    .from("injections")
     .insert({
       store_id: params.storeId ?? null,
-      site_id: params.siteId,
-      payload: params.payload,
+      payload,
       status: "pending",
       result: { logs: [] },
     })
@@ -36,24 +65,24 @@ export async function createProvisionRun(params: {
     .single();
 
   if (error || !data) {
-    throw new Error(error?.message ?? "Falha ao criar provision run.");
+    throw new Error(error?.message ?? "Falha ao criar injection.");
   }
 
-  return data as ProvisionRun;
+  return toProvisionRun(data as InjectionRow);
 }
 
 export async function getProvisionRun(runId: string): Promise<ProvisionRun> {
   const { data, error } = await supabase
-    .from("provision_runs")
+    .from("injections")
     .select("*")
     .eq("id", runId)
     .single();
 
   if (error || !data) {
-    throw new Error(error?.message ?? "Provision run não encontrado.");
+    throw new Error(error?.message ?? "Injection não encontrada.");
   }
 
-  return data as ProvisionRun;
+  return toProvisionRun(data as InjectionRow);
 }
 
 /* ──────────────── Append log & update status ──────────── */
@@ -87,7 +116,7 @@ export async function appendProvisionLog(
   if (updates?.status) patch.status = updates.status;
 
   const { error } = await supabase
-    .from("provision_runs")
+    .from("injections")
     .update(patch)
     .eq("id", runId);
 
