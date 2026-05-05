@@ -98,10 +98,13 @@ export async function POST(request: Request) {
         .select("wix_instance_id")
         .eq("id", job.store_id)
         .single();
-      const authHeader = await resolveAuthHeader(
-        WIX_ADMIN_API_KEY,
-        store?.wix_instance_id ?? null
-      );
+      // Prefere admin key direto (tem scopes plenos pra Stores). OAuth do
+      // instanceId so vira fallback se WIX_ADMIN_API_KEY estiver vazia —
+      // necessario porque OAuth de instalacoes novas nao tem
+      // WIX_STORES.READ_PRODUCTS.
+      const authHeader =
+        WIX_ADMIN_API_KEY ||
+        (await resolveAuthHeader("", store?.wix_instance_id ?? null));
 
       let batchResult;
       try {
